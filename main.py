@@ -3,7 +3,7 @@
 WordCloudと共起ネットワークを生成するGUIアプリケーション
 
 必要なライブラリ:
-pip install tkinter pillow wordcloud mecab-python3 networkx matplotlib japanize-matplotlib
+pip install tkinter pillow wordcloud mecab-python3 networkx matplotlib
 
 ※MeCabのインストールも必要です
 Windows: https://github.com/ikegami-yukino/mecab/releases
@@ -23,14 +23,25 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import networkx as nx
-import japanize_matplotlib  # 日本語フォント対応
+
 
 
 class JapaneseTextAnalyzer:
     def __init__(self, root):
         self.root = root
-        self.root.title("日本語テキスト分析ツール")
+        self.root.title("日本語テキスト解析ツール")
         self.root.geometry("1400x900")
+
+        # フォント探索を先に行う
+        self.font_path = self.find_font_path()
+        self.font_prop = None
+        if self.font_path:
+            self.apply_font(self.font_path)
+        else:
+            messagebox.showinfo("フォント選択", "日本語フォントを選択してください。")
+            self.choose_font()
+            if not self.font_path:
+                messagebox.showwarning("警告", "日本語フォントが設定されていません。")
 
         # MeCab初期化
         try:
@@ -39,8 +50,15 @@ class JapaneseTextAnalyzer:
             messagebox.showerror("エラー", "MeCabの初期化に失敗しました。MeCabがインストールされているか確認してください。")
             self.mecab = None
 
+
         # フォント探索
         self.font_path = self.find_font_path()
+        self.font_prop = None
+        if self.font_path:
+            self.apply_font(self.font_path)
+        else:
+            messagebox.showinfo("フォント選択", "日本語フォントを選択してください。")
+            self.choose_font()
 
         # データ保持
         self.original_text = ""
@@ -99,6 +117,7 @@ class JapaneseTextAnalyzer:
 
         ttk.Button(btn_frame, text="ファイルから読み込み", command=self.load_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="サンプルテキスト", command=self.load_sample).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="フォント選択", command=self.choose_font).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="クリア", command=self.clear_text).pack(side=tk.LEFT, padx=5)
 
         # テキストエリア
@@ -319,14 +338,17 @@ class JapaneseTextAnalyzer:
     def find_font_path(self) -> Optional[str]:
         """環境に存在する日本語フォントを探索してパスを返す。"""
         candidates = [
+            "Yu Gothic UI",
+            "Yu Gothic",
+            "Meiryo UI",
+            "Meiryo",
+            "MS Gothic",
+            "MS PGothic",
             "IPAexGothic",
             "IPAPGothic",
             "Noto Sans CJK JP",
             "Noto Serif CJK JP",
             "Hiragino Sans",
-            "Yu Gothic",
-            "Meiryo",
-            "MS Gothic",
             "TakaoGothic",
         ]
 
@@ -338,15 +360,44 @@ class JapaneseTextAnalyzer:
             pass
 
         fallback_paths = [
-            Path("/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc"),
+            Path("C:/Windows/Fonts/yu-gothic.ttf"),
+            Path("C:/Windows/Fonts/yu-gothic.ttc"),
+            Path("C:/Windows/Fonts/YuGothR.ttc"),
+            Path("C:/Windows/Fonts/meiryo.ttc"),
+            Path("C:/Windows/Fonts/meiryob.ttc"),
             Path("C:/Windows/Fonts/msgothic.ttc"),
+            Path("/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc"),
             Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+            Path("/usr/share/fonts/truetype/noto/BIZ-UDGothicR.ttc")
         ]
         for path in fallback_paths:
             if path.exists():
                 return str(path)
 
         return None
+
+    def apply_font(self, font_path: str):
+        self.font_path = font_path
+        self.font_prop = font_manager.FontProperties(fname=font_path)
+        family = self.font_prop.get_name()
+        plt.rcParams["font.family"] = family
+        plt.rcParams["axes.unicode_minus"] = False
+        self.root.option_add("*Font", (family, 10))
+        if hasattr(self, "word_listbox"):
+            self.word_listbox.configure(font=(family, 11))
+        if hasattr(self, "text_area"):
+            self.text_area.configure(font=(family, 10))
+        if hasattr(self, "edit_area"):
+            self.edit_area.configure(font=(family, 10))
+
+    def choose_font(self):
+        path = filedialog.askopenfilename(
+            title="日本語フォントを選択",
+            initialdir="C:/Windows/Fonts",
+            filetypes=[("Font files", "*.ttf *.ttc"), ("All Files", "*.*")]
+        )
+        if path:
+            self.apply_font(path)
 
     def delete_by_pos(self):
         if not self.tokens:
@@ -523,7 +574,8 @@ class JapaneseTextAnalyzer:
 
         nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color='lightblue',
                                alpha=0.7, ax=ax)
-        nx.draw_networkx_labels(G, pos, font_size=10, font_family='sans-serif', ax=ax)
+        font_family = self.font_prop.get_name() if self.font_prop else 'sans-serif'
+        nx.draw_networkx_labels(G, pos, font_size=10, font_family=font_family, ax=ax)
         nx.draw_networkx_edges(G, pos, width=edge_widths, alpha=0.5, ax=ax)
 
         ax.set_title('共起ネットワーク（上位50組）', fontsize=16, pad=20)
