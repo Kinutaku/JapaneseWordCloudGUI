@@ -14,6 +14,7 @@ Linux: sudo apt-get install mecab libmecab-dev mecab-ipadic-utf8
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
 import MeCab
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -32,15 +33,30 @@ class JapaneseTextAnalyzer:
         self.root.title("日本語テキスト分析ツール")
         self.root.geometry("1400x900")
 
-        # MeCab初期化
+        # ============================
+        # フォント設定（Meiryo固定）
+        # ============================
+        self.font_path = r"C:\Windows\Fonts\meiryo.ttc"
+
+        if Path(self.font_path).exists():
+            self.font_prop = font_manager.FontProperties(fname=self.font_path)
+            plt.rcParams["font.family"] = self.font_prop.get_name()
+            plt.rcParams["axes.unicode_minus"] = False
+        else:
+            messagebox.showwarning(
+                "警告",
+                f"Meiryo フォントが見つかりませんでした: {self.font_path}\n"
+                "Windows環境であることを確認してください。"
+            )
+            self.font_prop = None
+
+        # MeCab
         try:
             self.mecab = MeCab.Tagger("-Owakati")
         except Exception:
-            messagebox.showerror("エラー", "MeCabの初期化に失敗しました。MeCabがインストールされているか確認してください。")
+            messagebox.showerror("警告", "MeCabが見つかりません")
             self.mecab = None
 
-        # フォント探索
-        self.font_path = self.find_font_path()
 
         # データ保持
         self.original_text = ""
@@ -125,7 +141,7 @@ class JapaneseTextAnalyzer:
         right_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
 
         # 左側: 単語リスト
-        ttk.Label(left_frame, text="単語頻度リスト", font=("", 12, "bold")).pack(pady=5)
+        ttk.Label(left_frame, text="単語頻度リスト", font=("Meiryo", 12, "bold")).pack(pady=5)
 
         # 検索フレーム
         search_frame = ttk.Frame(left_frame)
@@ -249,6 +265,9 @@ class JapaneseTextAnalyzer:
 
         # MeCabで分かち書き
         wakati = self.mecab.parse(text)
+        # ゼロ幅文字を除去し、全角スペースを半角スペースへ
+        wakati = re.sub(r'[\u200B\u200C\u200D\uFEFF]', '', wakati)
+        wakati = wakati.replace('\u3000', ' ')
         if not wakati:
             messagebox.showerror("エラー", "MeCabの解析結果を取得できませんでした。")
             return
@@ -317,36 +336,8 @@ class JapaneseTextAnalyzer:
             return ""
 
     def find_font_path(self) -> Optional[str]:
-        """環境に存在する日本語フォントを探索してパスを返す。"""
-        candidates = [
-            "IPAexGothic",
-            "IPAPGothic",
-            "Noto Sans CJK JP",
-            "Noto Serif CJK JP",
-            "Hiragino Sans",
-            "Yu Gothic",
-            "Meiryo",
-            "MS Gothic",
-            "TakaoGothic",
-        ]
+        return "C:/Windows/Fonts/meiryo.ttc"
 
-        try:
-            for font in font_manager.fontManager.ttflist:
-                if any(name in font.name for name in candidates):
-                    return font.fname
-        except Exception:
-            pass
-
-        fallback_paths = [
-            Path("/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc"),
-            Path("C:/Windows/Fonts/msgothic.ttc"),
-            Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
-        ]
-        for path in fallback_paths:
-            if path.exists():
-                return str(path)
-
-        return None
 
     def delete_by_pos(self):
         if not self.tokens:
@@ -523,7 +514,8 @@ class JapaneseTextAnalyzer:
 
         nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color='lightblue',
                                alpha=0.7, ax=ax)
-        nx.draw_networkx_labels(G, pos, font_size=10, font_family='sans-serif', ax=ax)
+        font_family = self.font_prop.get_name() if getattr(self, 'font_prop', None) else 'sans-serif'
+        nx.draw_networkx_labels(G, pos, font_size=10, font_family=font_family, ax=ax)
         nx.draw_networkx_edges(G, pos, width=edge_widths, alpha=0.5, ax=ax)
 
         ax.set_title('共起ネットワーク（上位50組）', fontsize=16, pad=20)
