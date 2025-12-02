@@ -251,10 +251,24 @@ class JapaneseTextAnalyzer:
         self.wc_height_var = tk.IntVar(value=600)
         ttk.Spinbox(param_frame, from_=100, to=5000, textvariable=self.wc_height_var, width=7).pack(side=tk.LEFT, padx=2)
 
-        # 可視化ボタンを分割: WordCloud / 共起ネットワーク / 頻度グラフ
+        # グラフ生成ボタンを分割: WordCloud / ネットワーク / 頻度グラフ
         ttk.Button(param_frame, text="WordCloud生成", command=self.on_generate_wordcloud).pack(side=tk.RIGHT, padx=5)
         ttk.Button(param_frame, text="共起ネットワーク生成", command=self.on_generate_network).pack(side=tk.RIGHT, padx=5)
         ttk.Button(param_frame, text="頻度グラフ生成", command=self.on_generate_frequency_chart).pack(side=tk.RIGHT, padx=5)
+
+        # 共起ネットワーク出力サイズ
+        ttk.Label(param_frame, text="ネットワーク幅:").pack(side=tk.LEFT, padx=5)
+        self.net_width_var = tk.IntVar(value=1200)
+        ttk.Spinbox(param_frame, from_=200, to=5000, textvariable=self.net_width_var, width=7).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(param_frame, text="高さ:").pack(side=tk.LEFT, padx=2)
+        self.net_height_var = tk.IntVar(value=800)
+        ttk.Spinbox(param_frame, from_=200, to=5000, textvariable=self.net_height_var, width=7).pack(side=tk.LEFT, padx=2)
+
+        # 追加: 共起ネットワーク表示組数
+        ttk.Label(param_frame, text="ネットワーク表示組数:").pack(side=tk.LEFT, padx=5)
+        self.net_edge_count_var = tk.IntVar(value=50)
+        ttk.Spinbox(param_frame, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).pack(side=tk.LEFT, padx=2)
 
         edit_frame.columnconfigure(0, weight=1)
         edit_frame.columnconfigure(1, weight=2)
@@ -580,6 +594,7 @@ class JapaneseTextAnalyzer:
             widget.destroy()
 
         window_size = self.window_var.get()
+        edge_count = getattr(self, "net_edge_count_var", tk.IntVar(value=50)).get()
 
         # 共起ペア抽出
         cooc_pairs = []
@@ -598,40 +613,84 @@ class JapaneseTextAnalyzer:
             ttk.Label(self.network_frame, text="共起データがありません").pack(pady=20)
             return
 
-        # ネットワーク構築
+        # ネットワーク構築（指定した組数を使用）
         G = nx.Graph()
-        for (word1, word2), count in cooc_count.most_common(50):  # 上位50組
+        for (word1, word2), count in cooc_count.most_common(edge_count):
             G.add_edge(word1, word2, weight=count)
 
-        # 描画
-        fig, ax = plt.subplots(figsize=(12, 8))
-        pos = nx.spring_layout(G, k=2, iterations=50)
+        if len(G.nodes()) == 0:
+            ttk.Label(self.network_frame, text="表示できるネットワークがありません").pack(pady=20)
+            return
 
+        # 描画サイズを取得
+        w = getattr(self, "net_width_var", None)
+        h = getattr(self, "net_height_var", None)
+        fig_w = w.get() / 100 if w else 12
+        fig_h = h.get() / 100 if h else 8
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h), facecolor='white')
+        ax.set_facecolor('white')
 
-
-        # after building G
+        # コミュニティ検出でノードを色分け
         communities = list(nx.community.greedy_modularity_communities(G))
         comm_map = {}
         for idx, nodes in enumerate(communities):
             for n in nodes:
                 comm_map[n] = idx
-        colors = [cm.tab20(comm_map.get(n, 0) / max(len(communities), 1)) for n in G.nodes()]
-        pos = nx.spring_layout(G, k=1.5, iterations=100, seed=42)
 
-        node_sizes = [word_freq.get(node, 1) * 120 for node in G.nodes()]
+        # レイアウト計算（改善版パラメータ）
+        pos = nx.spring_layout(G, k=2.5, iterations=150, seed=42, scale=2)
+
+        # ノードサイズを単語の出現頻度に基づいて計算（より適切なスケーリング）
+        node_sizes = [max(300, word_freq.get(node, 1) * 150) for node in G.nodes()]
+
+        # エッジの重みを正規化して透明度と幅に反映
         edges = G.edges()
         weights = [G[u][v]['weight'] for u, v in edges]
         max_weight = max(weights) if weights else 1
-        edge_widths = [0.5 + (w / max_weight) * 4 for w in weights]
+        min_weight = min(weights) if weights else 1
+        normalized_weights = [(w - min_weight) / (max_weight - min_weight + 0.001) for w in weights]
+        edge_widths = [1 + normalized_w * 5 for normalized_w in normalized_weights]
+        edge_alphas = [0.3 + normalized_w * 0.5 for normalized_w in normalized_weights]
 
-        nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color=colors, alpha=0.8, ax=ax, linewidths=0.5, edgecolors="#333")
-        nx.draw_networkx_edges(G, pos, width=edge_widths, alpha=0.4, edge_color="#888", ax=ax)
+        # ノードの色をコミュニティに基づいて設定
+        cmap = cm.get_cmap('tab20') if len(communities) <= 20 else cm.get_cmap('hsv')
+        colors = [cmap(comm_map.get(n, 0) % 20 / 20) for n in G.nodes()]
+
+        # ノード描画
+        nx.draw_networkx_nodes(
+            G, pos,
+            node_size=node_sizes,
+            node_color=colors,
+            alpha=0.85,
+            ax=ax,
+            linewidths=2,
+            edgecolors='#222'
+        )
+
+        # エッジ描画（重みに応じた透明度）
+        for (u, v), width, alpha in zip(edges, edge_widths, edge_alphas):
+            nx.draw_networkx_edges(
+                G, pos,
+                edgelist=[(u, v)],
+                width=width,
+                alpha=alpha,
+                edge_color='#666',
+                ax=ax
+            )
+
+        # ラベル描画
         font_family = self.font_prop.get_name() if getattr(self, "font_prop", None) else "sans-serif"
-        nx.draw_networkx_labels(G, pos, font_size=10, font_family=font_family, ax=ax)
-        ax.set_title("共起ネットワーク（上位50エッジ）", fontsize=16, pad=20)
+        nx.draw_networkx_labels(
+            G, pos,
+            font_size=9,
+            font_family=font_family,
+            font_weight='bold',
+            ax=ax
+        )
+
+        ax.set_title(f"共起ネットワーク（上位 {edge_count} エッジ、{len(G.nodes())} ノード）", fontsize=16, pad=20, weight='bold')
         ax.axis("off")
         plt.tight_layout()
-
 
         canvas = FigureCanvasTkAgg(fig, self.network_frame)
         canvas.draw()
@@ -640,6 +699,8 @@ class JapaneseTextAnalyzer:
         # 保存ボタン
         ttk.Button(self.network_frame, text="画像として保存",
                    command=lambda: self.save_figure(fig, "network")).pack(pady=5)
+        ttk.Button(self.network_frame, text="SVGで保存",
+                   command=lambda: self.save_figure(fig, "network", fmt="svg")).pack(pady=5)
 
     def generate_frequency_chart(self, word_freq):
         # 既存のウィジェットをクリア
@@ -668,14 +729,17 @@ class JapaneseTextAnalyzer:
         ttk.Button(self.freq_frame, text="画像として保存",
                    command=lambda: self.save_figure(fig, "frequency")).pack(pady=5)
 
-    def save_figure(self, fig, name):
+    def save_figure(self, fig, name, fmt=None):
         filepath = filedialog.asksaveasfilename(
             defaultextension=".png",
             initialfile=f"{name}.png",
             filetypes=[("PNG", "*.png"), ("PDF", "*.pdf"), ("SVG", "*.svg")]
         )
         if filepath:
-            fig.savefig(filepath, dpi=300, bbox_inches='tight')
+            save_kwargs = {"dpi": 300, "bbox_inches": "tight"}
+            if fmt:
+                save_kwargs["format"] = fmt
+            fig.savefig(filepath, **save_kwargs)
             messagebox.showinfo("完了", f"保存しました: {filepath}")
 
     # ---------- 追加: 編集タブから呼び出すラッパー関数 ----------
