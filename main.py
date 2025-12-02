@@ -24,7 +24,11 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import networkx as nx
-import japanize_matplotlib  # 日本語フォント対応
+import itertools
+from matplotlib import cm
+# import japanize_matplotlib  # 日本語フォント対応
+
+
 
 
 class JapaneseTextAnalyzer:
@@ -82,6 +86,28 @@ class JapaneseTextAnalyzer:
         self.setup_ui()
 
     def setup_ui(self):
+        # =============================
+        # ttk の日本語フォント設定（Meiryo）
+        # =============================
+        font_path = r"C:\Windows\Fonts\meiryo.ttc"
+
+        if Path(font_path).exists():
+            # 全 ttk ウィジェットに Meiryo を適用
+            style = ttk.Style()
+            style.configure(".", font=("Meiryo", 11))
+            style.configure("TLabel", font=("Meiryo", 11))
+            style.configure("TButton", font=("Meiryo", 11))
+            style.configure("TEntry", font=("Meiryo", 11))
+            style.configure("Treeview", font=("Meiryo", 10))
+            style.configure("Treeview.Heading", font=("Meiryo", 10, "bold"))
+            style.configure("TNotebook.Tab", font=("Meiryo", 10))
+
+        else:
+            messagebox.showwarning(
+                "警告",
+                f"Meiryo フォントが見つかりません: {font_path}"
+            )
+            
         # メインフレーム
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -322,16 +348,18 @@ class JapaneseTextAnalyzer:
             return ""
 
         try:
-            tagger = MeCab.Tagger("")
+            # -Ochasen 形式は POS をタブ 4 列目に含む（例: 名詞-一般-...）
+            tagger = MeCab.Tagger("-Ochasen")
             parsed = tagger.parse(word)
             if not parsed:
                 return ""
             first_line = parsed.splitlines()[0]
             parts = first_line.split("\t")
-            if len(parts) < 2:
+            if len(parts) < 4:
                 return ""
-            features = parts[1].split(",")
-            return features[0] if features else ""
+            pos_field = parts[3]  # 品詞フィールド
+            pos_major = pos_field.split("-")[0] if pos_field else ""
+            return pos_major
         except Exception:
             return ""
 
@@ -345,15 +373,25 @@ class JapaneseTextAnalyzer:
 
         pos_window = tk.Toplevel(self.root)
         pos_window.title("品詞で削除")
-        pos_window.geometry("320x160")
+        pos_window.geometry("360x220")
 
-        ttk.Label(pos_window, text="削除する品詞を選択してください").pack(pady=10)
+        ttk.Label(pos_window, text="削除する品詞を選択してください").pack(pady=8)
 
         pos_options = [
             "名詞", "動詞", "形容詞", "副詞", "形容動詞", "助詞", "助動詞", "記号"
         ]
+        # 現在存在する品詞を表示
+        current_pos_counts = Counter(self.pos_cache)
+        if current_pos_counts:
+            info_lines = [f"{p}: {current_pos_counts[p]}件" for p in pos_options if p in current_pos_counts]
+            extra = [f"{p}: {n}件" for p, n in current_pos_counts.items() if p not in pos_options]
+            info_lines.extend(extra)
+            ttk.Label(pos_window, text="現在の品詞内訳").pack(pady=(4, 2))
+            info_text = "\n".join(info_lines) if info_lines else "なし"
+            ttk.Label(pos_window, text=info_text, justify=tk.LEFT).pack()
+
         selected_pos = tk.StringVar(value=pos_options[0])
-        ttk.Combobox(pos_window, values=pos_options, textvariable=selected_pos, state="readonly").pack(pady=5)
+        ttk.Combobox(pos_window, values=pos_options, textvariable=selected_pos, state="readonly").pack(pady=8)
 
         def perform_delete():
             target = selected_pos.get()
@@ -503,23 +541,31 @@ class JapaneseTextAnalyzer:
         fig, ax = plt.subplots(figsize=(12, 8))
         pos = nx.spring_layout(G, k=2, iterations=50)
 
-        # ノードサイズは出現頻度に応じて
-        node_sizes = [word_freq.get(node, 1) * 100 for node in G.nodes()]
 
-        # エッジの太さは共起回数に応じて
+
+        # after building G
+        communities = list(nx.community.greedy_modularity_communities(G))
+        comm_map = {}
+        for idx, nodes in enumerate(communities):
+            for n in nodes:
+                comm_map[n] = idx
+        colors = [cm.tab20(comm_map.get(n, 0) / max(len(communities), 1)) for n in G.nodes()]
+        pos = nx.spring_layout(G, k=1.5, iterations=100, seed=42)
+
+        node_sizes = [word_freq.get(node, 1) * 120 for node in G.nodes()]
         edges = G.edges()
         weights = [G[u][v]['weight'] for u, v in edges]
         max_weight = max(weights) if weights else 1
-        edge_widths = [w / max_weight * 5 for w in weights]
+        edge_widths = [0.5 + (w / max_weight) * 4 for w in weights]
 
-        nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color='lightblue',
-                               alpha=0.7, ax=ax)
-        font_family = self.font_prop.get_name() if getattr(self, 'font_prop', None) else 'sans-serif'
+        nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color=colors, alpha=0.8, ax=ax, linewidths=0.5, edgecolors="#333")
+        nx.draw_networkx_edges(G, pos, width=edge_widths, alpha=0.4, edge_color="#888", ax=ax)
+        font_family = self.font_prop.get_name() if getattr(self, "font_prop", None) else "sans-serif"
         nx.draw_networkx_labels(G, pos, font_size=10, font_family=font_family, ax=ax)
-        nx.draw_networkx_edges(G, pos, width=edge_widths, alpha=0.5, ax=ax)
+        ax.set_title("共起ネットワーク（上位50エッジ）", fontsize=16, pad=20)
+        ax.axis("off")
+        plt.tight_layout()
 
-        ax.set_title('共起ネットワーク（上位50組）', fontsize=16, pad=20)
-        ax.axis('off')
 
         canvas = FigureCanvasTkAgg(fig, self.network_frame)
         canvas.draw()
