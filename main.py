@@ -14,6 +14,7 @@ Linux: sudo apt-get install mecab libmecab-dev mecab-ipadic-utf8
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
 import MeCab
+import ipadic
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -54,9 +55,9 @@ class JapaneseTextAnalyzer:
             )
             self.font_prop = None
 
-        # MeCab
+        # MeCab (ipadic 設定を利用)
         try:
-            self.mecab = MeCab.Tagger("-Owakati")
+            self.mecab = MeCab.Tagger(f"{ipadic.MECAB_ARGS} -Ochasen")
         except Exception:
             messagebox.showerror("警告", "MeCabが見つかりません")
             self.mecab = None
@@ -277,6 +278,18 @@ class JapaneseTextAnalyzer:
     def clear_text(self):
         self.text_area.delete(1.0, tk.END)
 
+    def parse_with_pos(self, text: str):
+        tagger = MeCab.Tagger(f"{ipadic.MECAB_ARGS} -Ochasen")
+        parsed = tagger.parse(text)
+        lines = [l for l in parsed.splitlines() if l and l != "EOS"]
+        surfaces, pos_list = [], []
+        for line in lines:
+            parts = line.split("\t")
+            if len(parts) >= 4:
+                surfaces.append(parts[0])
+                pos_list.append(parts[3].split("-")[0])
+        return surfaces, pos_list
+    
     def tokenize_text(self):
         if not self.mecab:
             messagebox.showerror("エラー", "MeCabが初期化されていません。")
@@ -289,30 +302,18 @@ class JapaneseTextAnalyzer:
 
         self.original_text = text
 
-        # MeCabで分かち書き
-        wakati = self.mecab.parse(text)
-        # ゼロ幅文字を除去し、全角スペースを半角スペースへ
-        wakati = re.sub(r'[\u200B\u200C\u200D\uFEFF]', '', wakati)
-        wakati = wakati.replace('\u3000', ' ')
-        if not wakati:
+        surfaces, pos_list = self.parse_with_pos(text)
+        if not surfaces:
             messagebox.showerror("エラー", "MeCabの解析結果を取得できませんでした。")
             return
-        words = wakati.strip().split()
 
-        # ストップワード除去
-        self.tokens = [w for w in words if w not in self.stop_words and len(w) > 1]
+        self.tokens = [s for s in surfaces if s not in self.stop_words and len(s) > 1]
+        # POS cache aligned with filtered tokens
+        self.pos_cache = [p for s, p in zip(surfaces, pos_list) if s in self.tokens]
 
-        # 品詞情報をキャッシュする
-        self.pos_cache = [self.get_pos(w) for w in self.tokens]
-
-        # 頻度カウント
         self.word_freq = Counter(self.tokens)
-
-        # 編集エリアに表示
         self.edit_area.delete(1.0, tk.END)
-        self.edit_area.insert(1.0, ' '.join(self.tokens))
-
-        # 単語リスト更新
+        self.edit_area.insert(1.0, " ".join(self.tokens))
         self.refresh_word_list()
 
         # タブ切り替え
@@ -320,13 +321,10 @@ class JapaneseTextAnalyzer:
         messagebox.showinfo("完了", f"{len(self.tokens)}個の単語を抽出しました。")
 
     def refresh_word_list(self):
-        # 編集エリアから単語を再カウント
         text = self.edit_area.get(1.0, tk.END).strip()
         self.tokens = text.split()
         self.word_freq = Counter(self.tokens)
-
-        # 品詞キャッシュを更新（編集後の単語を再判定）
-        self.pos_cache = [self.get_pos(w) for w in self.tokens]
+        self.pos_cache = [self.get_pos(t) for t in self.tokens]  # get_pos below uses cached Ochasen tagging
 
         # リスト更新
         self.word_listbox.delete(0, tk.END)
@@ -343,25 +341,19 @@ class JapaneseTextAnalyzer:
 
     @lru_cache(maxsize=4096)
     def get_pos(self, word: str) -> str:
-        """単語から主要な品詞を取得する（キャッシュ付き）。"""
         if not word or not self.mecab:
             return ""
-
-        try:
-            # -Ochasen 形式は POS をタブ 4 列目に含む（例: 名詞-一般-...）
-            tagger = MeCab.Tagger("-Ochasen")
-            parsed = tagger.parse(word)
-            if not parsed:
-                return ""
-            first_line = parsed.splitlines()[0]
-            parts = first_line.split("\t")
-            if len(parts) < 4:
-                return ""
-            pos_field = parts[3]  # 品詞フィールド
-            pos_major = pos_field.split("-")[0] if pos_field else ""
-            return pos_major
-        except Exception:
+        tagger = MeCab.Tagger(f"{ipadic.MECAB_ARGS} -Ochasen")
+        parsed = tagger.parse(word)
+        if not parsed:
             return ""
+        first = parsed.splitlines()[0]
+        parts = first.split("\t")
+        if len(parts) < 4:
+            return ""
+        pos_field = parts[3]
+        return pos_field.split("-")[0] if pos_field else ""
+
 
     def find_font_path(self) -> Optional[str]:
         return "C:/Windows/Fonts/meiryo.ttc"
