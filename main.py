@@ -234,41 +234,60 @@ class JapaneseTextAnalyzer:
         param_frame = ttk.Frame(right_frame)
         param_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Label(param_frame, text="最小出現回数:").pack(side=tk.LEFT, padx=5)
-        self.min_freq_var = tk.IntVar(value=2)
-        ttk.Spinbox(param_frame, from_=1, to=20, textvariable=self.min_freq_var, width=5).pack(side=tk.LEFT, padx=5)
+        # 左側にパラメータ、右側にアクションを分けて配置
+        param_grid = ttk.Frame(param_frame)
+        param_grid.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        ttk.Label(param_frame, text="共起ウィンドウ:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_grid, text="最小出現回数:").grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        self.min_freq_var = tk.IntVar(value=2)
+        ttk.Spinbox(param_grid, from_=1, to=20, textvariable=self.min_freq_var, width=7).grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+
+        ttk.Label(param_grid, text="共起ウィンドウ:").grid(row=1, column=0, padx=5, pady=2, sticky=tk.W)
         self.window_var = tk.IntVar(value=5)
-        ttk.Spinbox(param_frame, from_=2, to=20, textvariable=self.window_var, width=5).pack(side=tk.LEFT, padx=5)
+        ttk.Spinbox(param_grid, from_=2, to=20, textvariable=self.window_var, width=7).grid(row=1, column=1, padx=5, pady=2, sticky=tk.W)
+
+        ttk.Label(param_grid, text="ノード色パレット:").grid(row=2, column=0, padx=5, pady=2, sticky=tk.W)
+        self.network_cmap_var = tk.StringVar(value="Pastel1")
+        ttk.Combobox(
+            param_grid,
+            values=["Pastel1", "Pastel2", "Set3", "Accent", "tab20"],
+            textvariable=self.network_cmap_var,
+            state="readonly",
+            width=12
+        ).grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
 
         # 追加: WordCloud 画像サイズ設定（タブで事前指定）
-        ttk.Label(param_frame, text="WordCloud 幅:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_grid, text="WordCloud 幅:").grid(row=3, column=0, padx=5, pady=2, sticky=tk.W)
         self.wc_width_var = tk.IntVar(value=1000)
-        ttk.Spinbox(param_frame, from_=100, to=5000, textvariable=self.wc_width_var, width=7).pack(side=tk.LEFT, padx=2)
+        ttk.Spinbox(param_grid, from_=100, to=5000, textvariable=self.wc_width_var, width=7).grid(row=3, column=1, padx=5, pady=2, sticky=tk.W)
 
-        ttk.Label(param_frame, text="高さ:").pack(side=tk.LEFT, padx=2)
+        ttk.Label(param_grid, text="WordCloud 高さ:").grid(row=3, column=2, padx=5, pady=2, sticky=tk.W)
         self.wc_height_var = tk.IntVar(value=600)
-        ttk.Spinbox(param_frame, from_=100, to=5000, textvariable=self.wc_height_var, width=7).pack(side=tk.LEFT, padx=2)
-
-        # グラフ生成ボタンを分割: WordCloud / ネットワーク / 頻度グラフ
-        ttk.Button(param_frame, text="WordCloud生成", command=self.on_generate_wordcloud).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(param_frame, text="共起ネットワーク生成", command=self.on_generate_network).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(param_frame, text="頻度グラフ生成", command=self.on_generate_frequency_chart).pack(side=tk.RIGHT, padx=5)
+        ttk.Spinbox(param_grid, from_=100, to=5000, textvariable=self.wc_height_var, width=7).grid(row=3, column=3, padx=5, pady=2, sticky=tk.W)
 
         # 共起ネットワーク出力サイズ
-        ttk.Label(param_frame, text="ネットワーク幅:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_grid, text="ネットワーク幅:").grid(row=4, column=0, padx=5, pady=2, sticky=tk.W)
         self.net_width_var = tk.IntVar(value=1200)
-        ttk.Spinbox(param_frame, from_=200, to=5000, textvariable=self.net_width_var, width=7).pack(side=tk.LEFT, padx=2)
+        ttk.Spinbox(param_grid, from_=200, to=5000, textvariable=self.net_width_var, width=7).grid(row=4, column=1, padx=5, pady=2, sticky=tk.W)
 
-        ttk.Label(param_frame, text="高さ:").pack(side=tk.LEFT, padx=2)
+        ttk.Label(param_grid, text="ネットワーク高さ:").grid(row=4, column=2, padx=5, pady=2, sticky=tk.W)
         self.net_height_var = tk.IntVar(value=800)
-        ttk.Spinbox(param_frame, from_=200, to=5000, textvariable=self.net_height_var, width=7).pack(side=tk.LEFT, padx=2)
+        ttk.Spinbox(param_grid, from_=200, to=5000, textvariable=self.net_height_var, width=7).grid(row=4, column=3, padx=5, pady=2, sticky=tk.W)
 
         # 追加: 共起ネットワーク表示組数
-        ttk.Label(param_frame, text="ネットワーク表示組数:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(param_grid, text="ネットワーク表示組数:").grid(row=5, column=0, padx=5, pady=2, sticky=tk.W)
         self.net_edge_count_var = tk.IntVar(value=50)
-        ttk.Spinbox(param_frame, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).pack(side=tk.LEFT, padx=2)
+        ttk.Spinbox(param_grid, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).grid(row=5, column=1, padx=5, pady=2, sticky=tk.W)
+
+        for i in range(4):
+            param_grid.columnconfigure(i, weight=1)
+
+        # グラフ生成ボタンを縦方向に配置して見切れを防止
+        action_frame = ttk.Frame(param_frame)
+        action_frame.pack(side=tk.RIGHT, padx=5)
+        ttk.Button(action_frame, text="WordCloud生成", command=self.on_generate_wordcloud).grid(row=0, column=0, pady=2, sticky=tk.EW)
+        ttk.Button(action_frame, text="共起ネットワーク生成", command=self.on_generate_network).grid(row=1, column=0, pady=2, sticky=tk.EW)
+        ttk.Button(action_frame, text="頻度グラフ生成", command=self.on_generate_frequency_chart).grid(row=2, column=0, pady=2, sticky=tk.EW)
 
         edit_frame.columnconfigure(0, weight=1)
         edit_frame.columnconfigure(1, weight=2)
@@ -638,7 +657,15 @@ class JapaneseTextAnalyzer:
                 comm_map[n] = idx
 
         # レイアウト計算（改善版パラメータ）
-        pos = nx.spring_layout(G, k=2.5, iterations=150, seed=42, scale=2)
+        layout_k = 1 / max(len(G.nodes()), 1) ** 0.5
+        pos = nx.spring_layout(
+            G,
+            k=layout_k,
+            iterations=300,
+            seed=42,
+            scale=2,
+            weight="weight"
+        )
 
         # ノードサイズを単語の出現頻度に基づいて計算（より適切なスケーリング）
         node_sizes = [max(300, word_freq.get(node, 1) * 150) for node in G.nodes()]
@@ -647,14 +674,18 @@ class JapaneseTextAnalyzer:
         edges = G.edges()
         weights = [G[u][v]['weight'] for u, v in edges]
         max_weight = max(weights) if weights else 1
-        min_weight = min(weights) if weights else 1
-        normalized_weights = [(w - min_weight) / (max_weight - min_weight + 0.001) for w in weights]
-        edge_widths = [1 + normalized_w * 5 for normalized_w in normalized_weights]
+        normalized_weights = [w / max_weight for w in weights]
+        edge_widths = [1.5 + normalized_w * 6 for normalized_w in normalized_weights]
         edge_alphas = [0.3 + normalized_w * 0.5 for normalized_w in normalized_weights]
 
         # ノードの色をコミュニティに基づいて設定
-        cmap = cm.get_cmap('tab20') if len(communities) <= 20 else cm.get_cmap('hsv')
-        colors = [cmap(comm_map.get(n, 0) % 20 / 20) for n in G.nodes()]
+        cmap_name = getattr(self, "network_cmap_var", tk.StringVar(value="Pastel1")).get()
+        cmap = cm.get_cmap(cmap_name)
+        num_colors = getattr(cmap, "N", 20)
+        colors = [
+            cmap((comm_map.get(n, 0) % num_colors) / max(num_colors - 1, 1))
+            for n in G.nodes()
+        ]
 
         # ノード描画
         nx.draw_networkx_nodes(
