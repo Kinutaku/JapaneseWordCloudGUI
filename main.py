@@ -85,6 +85,7 @@ class JapaneseTextAnalyzer:
         ])
 
         self.setup_ui()
+        self.refresh_stopword_list()
 
     def setup_ui(self):
         # =============================
@@ -145,13 +146,29 @@ class JapaneseTextAnalyzer:
         ttk.Button(btn_frame, text="クリア", command=self.clear_text).pack(side=tk.LEFT, padx=5)
 
         # テキストエリア
-        ttk.Label(input_frame, text="分析したいテキストを入力してください:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(input_frame, text="解析したいテキストを入力してください:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.text_area = scrolledtext.ScrolledText(input_frame, width=100, height=25, wrap=tk.WORD)
         self.text_area.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
 
+        # ストップワード編集（分かち書き前に調整可能）
+        stop_frame = ttk.LabelFrame(input_frame, text="ストップワード", padding=5)
+        stop_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+
+        stop_list_frame = ttk.Frame(stop_frame); stop_list_frame.pack(fill=tk.BOTH, expand=True)
+        stop_scroll = ttk.Scrollbar(stop_list_frame); stop_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.stopword_listbox = tk.Listbox(stop_list_frame, height=6, yscrollcommand=stop_scroll.set)
+        self.stopword_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        stop_scroll.config(command=self.stopword_listbox.yview)
+
+        stop_ctrl = ttk.Frame(stop_frame); stop_ctrl.pack(fill=tk.X, pady=4)
+        self.stopword_entry = ttk.Entry(stop_ctrl, width=20); self.stopword_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Button(stop_ctrl, text="追加", command=self.add_stop_word).pack(side=tk.LEFT, padx=2)
+        ttk.Button(stop_ctrl, text="削除", command=self.remove_selected_stop_word).pack(side=tk.LEFT, padx=2)
+        ttk.Button(stop_ctrl, text="適用", command=self.apply_stop_words).pack(side=tk.LEFT, padx=2)
+
         # 分かち書きボタン
-        ttk.Button(input_frame, text="分かち書き実行 →", command=self.tokenize_text,
-                   style="Accent.TButton").grid(row=3, column=0, pady=10)
+        ttk.Button(input_frame, text="分かち書き実行", command=self.tokenize_text,
+                   style="Accent.TButton").grid(row=4, column=0, pady=10)
 
         input_frame.columnconfigure(0, weight=1)
         input_frame.rowconfigure(2, weight=1)
@@ -225,8 +242,19 @@ class JapaneseTextAnalyzer:
         self.window_var = tk.IntVar(value=5)
         ttk.Spinbox(param_frame, from_=2, to=20, textvariable=self.window_var, width=5).pack(side=tk.LEFT, padx=5)
 
-        ttk.Button(param_frame, text="可視化実行 →", command=self.visualize,
-                   style="Accent.TButton").pack(side=tk.RIGHT, padx=5)
+        # 追加: WordCloud 画像サイズ設定（タブで事前指定）
+        ttk.Label(param_frame, text="WordCloud 幅:").pack(side=tk.LEFT, padx=5)
+        self.wc_width_var = tk.IntVar(value=1000)
+        ttk.Spinbox(param_frame, from_=100, to=5000, textvariable=self.wc_width_var, width=7).pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(param_frame, text="高さ:").pack(side=tk.LEFT, padx=2)
+        self.wc_height_var = tk.IntVar(value=600)
+        ttk.Spinbox(param_frame, from_=100, to=5000, textvariable=self.wc_height_var, width=7).pack(side=tk.LEFT, padx=2)
+
+        # 可視化ボタンを分割: WordCloud / 共起ネットワーク / 頻度グラフ
+        ttk.Button(param_frame, text="WordCloud生成", command=self.on_generate_wordcloud).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(param_frame, text="共起ネットワーク生成", command=self.on_generate_network).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(param_frame, text="頻度グラフ生成", command=self.on_generate_frequency_chart).pack(side=tk.RIGHT, padx=5)
 
         edit_frame.columnconfigure(0, weight=1)
         edit_frame.columnconfigure(1, weight=2)
@@ -330,6 +358,48 @@ class JapaneseTextAnalyzer:
         self.word_listbox.delete(0, tk.END)
         for word, count in self.word_freq.most_common():
             self.word_listbox.insert(tk.END, f"{word} ({count}回)")
+
+        # ストップワード表示も更新
+        self.refresh_stopword_list()
+
+    def refresh_stopword_list(self):
+        if not hasattr(self, "stopword_listbox"):
+            return
+        self.stopword_listbox.delete(0, tk.END)
+        for w in sorted(self.stop_words):
+            self.stopword_listbox.insert(tk.END, w)
+
+    def add_stop_word(self):
+        word = self.stopword_entry.get().strip()
+        if not word:
+            return
+        self.stop_words.add(word)
+        self.stopword_entry.delete(0, tk.END)
+        self.refresh_stopword_list()
+        self.apply_stop_words()
+
+    def remove_selected_stop_word(self):
+        selection = self.stopword_listbox.curselection()
+        if not selection:
+            return
+        word = self.stopword_listbox.get(selection[0])
+        self.stop_words.discard(word)
+        self.refresh_stopword_list()
+        self.apply_stop_words()
+
+    def apply_stop_words(self):
+        # Listbox をソースとして self.stop_words を同期
+        if hasattr(self, "stopword_listbox"):
+            self.stop_words = set(self.stopword_listbox.get(0, tk.END))
+
+        text = self.edit_area.get(1.0, tk.END).strip()
+        if not text:
+            return
+        words = text.split()
+        filtered = [w for w in words if w not in self.stop_words]
+        self.edit_area.delete(1.0, tk.END)
+        self.edit_area.insert(1.0, " ".join(filtered))
+        self.refresh_word_list()
 
     def filter_word_list(self, *args):
         search_term = self.search_var.get()
@@ -471,10 +541,14 @@ class JapaneseTextAnalyzer:
         for widget in self.wordcloud_frame.winfo_children():
             widget.destroy()
 
+        # タブで指定したサイズを使用する（デフォルト値は Spinbox にて設定）
+        width = getattr(self, "wc_width_var", tk.IntVar(value=1000)).get()
+        height = getattr(self, "wc_height_var", tk.IntVar(value=600)).get()
+
         # WordCloud生成
         wc = WordCloud(
-            width=1000,
-            height=600,
+            width=width,
+            height=height,
             background_color='white',
             font_path=self.font_path,
             relative_scaling=0.5,
@@ -483,7 +557,7 @@ class JapaneseTextAnalyzer:
             colormap='tab10'
         ).generate_from_frequencies(word_freq)
 
-        # 描画
+        # 描画（Figure サイズは表示用に固定、画像保存は save_figure で行う）
         fig, ax = plt.subplots(figsize=(12, 7))
         ax.imshow(wc, interpolation='bilinear')
         ax.axis('off')
@@ -604,6 +678,61 @@ class JapaneseTextAnalyzer:
             fig.savefig(filepath, dpi=300, bbox_inches='tight')
             messagebox.showinfo("完了", f"保存しました: {filepath}")
 
+    # ---------- 追加: 編集タブから呼び出すラッパー関数 ----------
+    def on_generate_wordcloud(self):
+        # 編集エリアから単語・頻度を取得し、最小出現回数でフィルタ
+        text = self.edit_area.get(1.0, tk.END).strip()
+        if not text:
+            messagebox.showwarning("警告", "単語データがありません。")
+            return
+        tokens = text.split()
+        word_freq = Counter(tokens)
+        min_freq = self.min_freq_var.get()
+        filtered_freq = {k: v for k, v in word_freq.items() if v >= min_freq}
+        if not filtered_freq:
+            messagebox.showwarning("警告", f"最小出現回数{min_freq}回以上の単語がありません。")
+            return
+        try:
+            self.generate_wordcloud(filtered_freq)
+            self.notebook.select(2)  # 可視化タブへ
+        except Exception as e:
+            messagebox.showerror("エラー", f"WordCloud の生成中に問題が発生しました: {e}")
+
+    def on_generate_network(self):
+        text = self.edit_area.get(1.0, tk.END).strip()
+        if not text:
+            messagebox.showwarning("警告", "単語データがありません。")
+            return
+        tokens = text.split()
+        word_freq = Counter(tokens)
+        min_freq = self.min_freq_var.get()
+        filtered_freq = {k: v for k, v in word_freq.items() if v >= min_freq}
+        if not filtered_freq:
+            messagebox.showwarning("警告", f"最小出現回数{min_freq}回以上の単語がありません。")
+            return
+        try:
+            self.generate_network(tokens, filtered_freq)
+            self.notebook.select(2)
+        except Exception as e:
+            messagebox.showerror("エラー", f"共起ネットワークの生成中に問題が発生しました: {e}")
+
+    def on_generate_frequency_chart(self):
+        text = self.edit_area.get(1.0, tk.END).strip()
+        if not text:
+            messagebox.showwarning("警告", "単語データがありません。")
+            return
+        tokens = text.split()
+        word_freq = Counter(tokens)
+        min_freq = self.min_freq_var.get()
+        filtered_freq = {k: v for k, v in word_freq.items() if v >= min_freq}
+        if not filtered_freq:
+            messagebox.showwarning("警告", f"最小出現回数{min_freq}回以上の単語がありません。")
+            return
+        try:
+            self.generate_frequency_chart(filtered_freq)
+            self.notebook.select(2)
+        except Exception as e:
+            messagebox.showerror("エラー", f"頻度グラフの生成中に問題が発生しました: {e}")
 
 def main():
     root = tk.Tk()
