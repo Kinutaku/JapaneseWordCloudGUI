@@ -369,7 +369,10 @@ class JapaneseTextAnalyzer:
             with open(filepath, 'rb') as bf:
                 raw = bf.read()
 
-            enc_candidates = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis', 'euc_jp']
+            enc_candidates = [
+                'utf-8-sig', 'utf-8', 'cp932', 'shift_jis', 'euc_jp',
+                'utf-16', 'utf-16-le', 'utf-16-be'
+            ]
             decoded = None
             used_enc = None
             for enc in enc_candidates:
@@ -381,12 +384,17 @@ class JapaneseTextAnalyzer:
                     continue
 
             if decoded is None:
-                messagebox.showerror("エラー", "CSVの文字コードを判別できませんでした。別の文字コードを試してください。")
-                return
+                # デコードできない場合でも中身を確認できるように置換デコードでフォールバック
+                decoded = raw.decode('utf-8', errors='replace')
+                used_enc = 'utf-8 (replace)'
+
+            # 改行を統一（Sniffer が失敗しやすいケースを減らす）
+            decoded = decoded.replace('\r\n', '\n').replace('\r', '\n')
 
             # 区切り文字を推定（先頭最大4KBをサンプルにして推定）
             sample = decoded[:4096]
             delimiter = ','
+            dialect = None
             try:
                 dialect = csv.Sniffer().sniff(sample)
                 delimiter = dialect.delimiter
@@ -402,7 +410,10 @@ class JapaneseTextAnalyzer:
                         continue
 
             # CSVを読み込み（io.StringIO 経由）
-            reader = csv.reader(io.StringIO(decoded), delimiter=delimiter)
+            if dialect:
+                reader = csv.reader(io.StringIO(decoded), dialect=dialect)
+            else:
+                reader = csv.reader(io.StringIO(decoded), delimiter=delimiter)
             rows = list(reader)
             if not rows:
                 messagebox.showwarning("警告", "CSVファイルが空です。")
@@ -417,7 +428,17 @@ class JapaneseTextAnalyzer:
             ttk.Label(col_window, text="結合する列を選択してください（複数選択可）:", wraplength=380).pack(pady=6, padx=10)
 
             # ヘッダー行の判定（ユーザに確認）
-            has_header = messagebox.askyesno("CSVヘッダ", "最初の行はヘッダーですか？")
+            sniff_header = False
+            try:
+                sniff_header = csv.Sniffer().has_header(sample)
+            except Exception:
+                sniff_header = False
+
+            header_prompt = "最初の行はヘッダーですか？"
+            if sniff_header:
+                header_prompt += " (推定: ヘッダーあり)"
+
+            has_header = messagebox.askyesno("CSVヘッダ", header_prompt)
             header_row = rows[0] if has_header else [f"列{i+1}" for i in range(len(rows[0]))]
             data_start = 1 if has_header else 0
 
@@ -470,7 +491,8 @@ class JapaneseTextAnalyzer:
                         else:
                             parts.append(str(val).strip())
                     row_text = " ".join([p for p in parts if p])
-                    text_lines.append(row_text)
+                    if row_text:  # 空行は無視
+                        text_lines.append(row_text)
 
                 combined_text = "\n".join(text_lines).strip()
                 if not combined_text:
@@ -531,9 +553,14 @@ class JapaneseTextAnalyzer:
             return
 
         self.original_text = text
-        # 【改善】行情報がない場合は改行で分割
-        if not self.original_lines:
-            self.original_lines = text.split('\n')
+
+        # 【改善】行情報をトークン化済みで保持（行ごとの共起計算用）
+        self.original_lines = []
+        for raw_line in text.split('\n'):
+            line_surfaces, _ = self.parse_with_pos(raw_line)
+            line_tokens = [s for s in line_surfaces if s not in self.stop_words and len(s) > 1]
+            if line_tokens:
+                self.original_lines.append(" ".join(line_tokens))
 
         surfaces, pos_list = self.parse_with_pos(text)
         if not surfaces:
@@ -558,6 +585,9 @@ class JapaneseTextAnalyzer:
         self.tokens = text.split()
         self.word_freq = Counter(self.tokens)
         self.pos_cache = [self.get_pos(t) for t in self.tokens]  # get_pos below uses cached Ochasen tagging
+
+        # 【改善】編集内容を行単位のトークン列として保持し、共起ネットワークに反映
+        self.original_lines = [" ".join(line.split()) for line in text.split('\n') if line.split()]
 
         # リスト更新
         self.word_listbox.delete(0, tk.END)
