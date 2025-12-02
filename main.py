@@ -27,7 +27,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import networkx as nx
 import itertools
 from matplotlib import cm
-# import japanize_matplotlib  # 日本語フォント対応
+import csv
+import io
 
 
 
@@ -68,6 +69,7 @@ class JapaneseTextAnalyzer:
         self.tokens = []
         self.word_freq = Counter()
         self.pos_cache = []
+        self.original_lines = []  # 【新機能】行情報を保持
 
         # ストップワード
         self.stop_words = set([
@@ -289,8 +291,21 @@ class JapaneseTextAnalyzer:
         self.net_edge_count_var = tk.IntVar(value=50)
         ttk.Spinbox(param_grid, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).grid(row=5, column=1, padx=5, pady=2, sticky=tk.W)
 
-        for i in range(4):
-            param_grid.columnconfigure(i, weight=1)
+        # 【新機能】自己回帰ネットワーク制御
+        ttk.Label(param_grid, text="自己ループ:").grid(row=6, column=0, padx=5, pady=2, sticky=tk.W)
+        self.self_loop_var = tk.StringVar(value="remove")
+        loop_frame = ttk.Frame(param_grid)
+        loop_frame.grid(row=6, column=1, padx=5, pady=2, sticky=tk.W)
+        ttk.Radiobutton(loop_frame, text="削除", variable=self.self_loop_var, value="remove").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(loop_frame, text="描画", variable=self.self_loop_var, value="keep").pack(side=tk.LEFT, padx=2)
+
+        # 【新機能】共起ウィンドウ形式
+        ttk.Label(param_grid, text="共起ウィンドウ形式:").grid(row=7, column=0, padx=5, pady=2, sticky=tk.W)
+        self.window_mode_var = tk.StringVar(value="sliding")
+        mode_frame = ttk.Frame(param_grid)
+        mode_frame.grid(row=7, column=1, columnspan=3, padx=5, pady=2, sticky=tk.W)
+        ttk.Radiobutton(mode_frame, text="スライディングウィンドウ", variable=self.window_mode_var, value="sliding").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(mode_frame, text="行ごと", variable=self.window_mode_var, value="line").pack(side=tk.LEFT, padx=2)
 
         # グラフ生成ボタンを縦方向に配置して見切れを防止
         action_frame = ttk.Frame(param_frame)
@@ -325,15 +340,157 @@ class JapaneseTextAnalyzer:
 
     def load_file(self):
         filepath = filedialog.askopenfilename(
-            filetypes=[("テキストファイル", "*.txt"), ("すべてのファイル", "*.*")]
+            filetypes=[
+                ("テキストファイル", "*.txt"),
+                ("CSVファイル", "*.csv"),
+                ("すべてのファイル", "*.*")
+            ]
         )
         if filepath:
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    self.text_area.delete(1.0, tk.END)
-                    self.text_area.insert(1.0, f.read())
+                # 拡張子判定は小文字で比較
+                if filepath.lower().endswith('.csv'):
+                    self.load_csv_file(filepath)
+                else:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        self.text_area.delete(1.0, tk.END)
+                        self.text_area.insert(1.0, content)
+                        # 行情報を保持
+                        self.original_text = content
+                        self.original_lines = content.split('\n')
             except Exception as e:
                 messagebox.showerror("エラー", f"ファイルの読み込みに失敗しました: {e}")
+
+    def load_csv_file(self, filepath):
+        """CSVファイルを読み込み、指定列のテキストを結合（エンコーディング/区切り検出付き）"""
+        try:
+            # バイナリ読み取りしてエンコーディング候補でデコードを試みる
+            with open(filepath, 'rb') as bf:
+                raw = bf.read()
+
+            enc_candidates = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis', 'euc_jp']
+            decoded = None
+            used_enc = None
+            for enc in enc_candidates:
+                try:
+                    decoded = raw.decode(enc)
+                    used_enc = enc
+                    break
+                except Exception:
+                    continue
+
+            if decoded is None:
+                messagebox.showerror("エラー", "CSVの文字コードを判別できませんでした。別の文字コードを試してください。")
+                return
+
+            # 区切り文字を推定（先頭最大4KBをサンプルにして推定）
+            sample = decoded[:4096]
+            delimiter = ','
+            try:
+                dialect = csv.Sniffer().sniff(sample)
+                delimiter = dialect.delimiter
+            except Exception:
+                # フォールバック候補（カンマ、タブ、セミコロン）
+                for cand in [',', '\t', ';']:
+                    try:
+                        # 簡易チェック：cand が行内に含まれるか
+                        if cand in sample:
+                            delimiter = cand
+                            break
+                    except Exception:
+                        continue
+
+            # CSVを読み込み（io.StringIO 経由）
+            reader = csv.reader(io.StringIO(decoded), delimiter=delimiter)
+            rows = list(reader)
+            if not rows:
+                messagebox.showwarning("警告", "CSVファイルが空です。")
+                return
+
+            # 列選択ダイアログ
+            col_window = tk.Toplevel(self.root)
+            col_window.title("CSV列選択")
+            col_window.geometry("420x360")
+
+            ttk.Label(col_window, text=f"検出エンコーディング: {used_enc}   推定区切り文字: '{delimiter}'", wraplength=380).pack(pady=6, padx=10)
+            ttk.Label(col_window, text="結合する列を選択してください（複数選択可）:", wraplength=380).pack(pady=6, padx=10)
+
+            # ヘッダー行の判定（ユーザに確認）
+            has_header = messagebox.askyesno("CSVヘッダ", "最初の行はヘッダーですか？")
+            header_row = rows[0] if has_header else [f"列{i+1}" for i in range(len(rows[0]))]
+            data_start = 1 if has_header else 0
+
+            # チェックボックスリスト（スクロール対応）
+            check_frame = ttk.Frame(col_window)
+            check_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+            scrollbar = ttk.Scrollbar(check_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            canvas = tk.Canvas(check_frame, yscrollcommand=scrollbar.set, height=220)
+            canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=canvas.yview)
+
+            inner_frame = ttk.Frame(canvas)
+            canvas_window = canvas.create_window((0, 0), window=inner_frame, anchor=tk.NW)
+
+            col_vars = []
+            for i, col_name in enumerate(header_row):
+                var = tk.BooleanVar(value=False)
+                col_vars.append(var)
+                ttk.Checkbutton(
+                    inner_frame,
+                    text=f"列{i+1}: {str(col_name)[:60]}",
+                    variable=var
+                ).pack(anchor=tk.W, pady=2)
+
+            def _on_config(event):
+                # canvas の幅に合わせてウィンドウ幅を更新（スクロール横幅問題の解消）
+                canvas.itemconfigure(canvas_window, width=event.width)
+                canvas.config(scrollregion=canvas.bbox("all"))
+            inner_frame.bind("<Configure>", _on_config)
+            canvas.bind("<Configure>", lambda e: canvas.itemconfigure(canvas_window, width=e.width))
+
+            def apply_selection():
+                selected_indices = [i for i, var in enumerate(col_vars) if var.get()]
+                if not selected_indices:
+                    messagebox.showwarning("警告", "最低1つの列を選択してください。")
+                    return
+
+                # CSV行ごとに選択列を結合（空セルは空文字扱い）
+                text_lines = []
+                for row in rows[data_start:]:
+                    # 安全にインデックス参照し、空白とBOM除去
+                    parts = []
+                    for i in selected_indices:
+                        val = row[i] if i < len(row) else ""
+                        if isinstance(val, str):
+                            parts.append(val.strip())
+                        else:
+                            parts.append(str(val).strip())
+                    row_text = " ".join([p for p in parts if p])
+                    text_lines.append(row_text)
+
+                combined_text = "\n".join(text_lines).strip()
+                if not combined_text:
+                    messagebox.showwarning("警告", "選択列の結合結果が空でした。別の列を選択してください。")
+                    return
+
+                # テキストエリアに確実に挿入
+                self.text_area.delete(1.0, tk.END)
+                self.text_area.insert(1.0, combined_text)
+                # 行情報と元テキストを保持
+                self.original_text = combined_text
+                self.original_lines = text_lines
+
+                col_window.destroy()
+                messagebox.showinfo("完了", f"{len(selected_indices)}列を結合しました。")
+
+            ttk.Button(col_window, text="適用", command=apply_selection).pack(pady=8)
+            ttk.Button(col_window, text="キャンセル", command=col_window.destroy).pack(pady=2)
+        except Exception as e:
+            messagebox.showerror("エラー", f"CSVファイルの読み込みに失敗しました: {e}")
 
     def load_sample(self):
         sample = """人工知能は現代社会において重要な技術となっています。機械学習やディープラーニングの発展により、
@@ -345,6 +502,8 @@ class JapaneseTextAnalyzer:
 改善により精度が向上しています。自然言語処理技術も進歩し、より自然な対話が可能になりました。"""
         self.text_area.delete(1.0, tk.END)
         self.text_area.insert(1.0, sample)
+        # 【改善】サンプル用に行情報を初期化
+        self.original_lines = sample.split('\n')
 
     def clear_text(self):
         self.text_area.delete(1.0, tk.END)
@@ -372,6 +531,9 @@ class JapaneseTextAnalyzer:
             return
 
         self.original_text = text
+        # 【改善】行情報がない場合は改行で分割
+        if not self.original_lines:
+            self.original_lines = text.split('\n')
 
         surfaces, pos_list = self.parse_with_pos(text)
         if not surfaces:
@@ -624,17 +786,37 @@ class JapaneseTextAnalyzer:
 
         window_size = self.window_var.get()
         edge_count = getattr(self, "net_edge_count_var", tk.IntVar(value=50)).get()
+        self_loop_mode = getattr(self, "self_loop_var", tk.StringVar(value="remove")).get()
+        window_mode = getattr(self, "window_mode_var", tk.StringVar(value="sliding")).get()
 
         # 共起ペア抽出
         cooc_pairs = []
-        for i in range(len(tokens)):
-            if tokens[i] not in word_freq:
-                continue
-            for j in range(i + 1, min(i + window_size, len(tokens))):
-                if tokens[j] not in word_freq:
+        
+        if window_mode == "sliding":
+            # スライディングウィンドウ形式（従来通り）
+            for i in range(len(tokens)):
+                if tokens[i] not in word_freq:
                     continue
-                pair = tuple(sorted([tokens[i], tokens[j]]))
-                cooc_pairs.append(pair)
+                for j in range(i + 1, min(i + window_size, len(tokens))):
+                    if tokens[j] not in word_freq:
+                        continue
+                    pair = tuple(sorted([tokens[i], tokens[j]]))
+                    cooc_pairs.append(pair)
+        else:
+            # 【改善】行ごと形式：保持した行情報を使用
+            for line in self.original_lines:
+                if not line.strip():  # 空行スキップ
+                    continue
+                # 行を分割しトークン化（既に分かち書きされている場合）
+                line_tokens = line.split()
+                for i in range(len(line_tokens)):
+                    if line_tokens[i] not in word_freq:
+                        continue
+                    for j in range(i + 1, len(line_tokens)):
+                        if line_tokens[j] not in word_freq:
+                            continue
+                        pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
+                        cooc_pairs.append(pair)
 
         cooc_count = Counter(cooc_pairs)
 
@@ -645,10 +827,28 @@ class JapaneseTextAnalyzer:
         # ネットワーク構築（指定した組数を使用）
         G = nx.Graph()
         for (word1, word2), count in cooc_count.most_common(edge_count):
+            # 【新機能】自己ループ（同じ単語同士）の制御
+            if word1 == word2 and self_loop_mode == "remove":
+                continue
             G.add_edge(word1, word2, weight=count)
 
         if len(G.nodes()) == 0:
             ttk.Label(self.network_frame, text="表示できるネットワークがありません").pack(pady=20)
+            return
+
+        # 【改善】最大連結成分のみを抽出
+        if not nx.is_connected(G):
+            largest_cc = max(nx.connected_components(G), key=len)
+            G = G.subgraph(largest_cc).copy()
+
+        # 【改善】最小重みしきい値でエッジをフィルタリング（孤立防止）
+        if len(G.edges()) > 0:
+            max_weight_val = max([d['weight'] for u, v, d in G.edges(data=True)])
+            min_weight = max(1, max_weight_val // 5)
+            G = nx.Graph([(u, v, d) for u, v, d in G.edges(data=True) if d['weight'] >= min_weight])
+
+        if len(G.nodes()) < 2:
+            ttk.Label(self.network_frame, text="十分な共起ネットワークが見つかりません。\nウィンドウサイズを大きくするか、共起組数を増やしてください。").pack(pady=20)
             return
 
         # 描画サイズを取得
@@ -666,18 +866,22 @@ class JapaneseTextAnalyzer:
             for n in nodes:
                 comm_map[n] = idx
 
-        # レイアウト計算（改善版パラメータ）
-        layout_k = 1 / max(len(G.nodes()), 1) ** 0.5
-        pos = nx.spring_layout(
-            G,
-            k=layout_k,
-            iterations=300,
-            seed=42,
-            scale=2,
-            weight="weight"
-        )
+        # 【改善】レイアウト計算：Kamada-Kawaiアルゴリズムで視認性向上
+        try:
+            pos = nx.kamada_kawai_layout(G, scale=2)
+        except:
+            # Kamada-Kawaiが失敗した場合はspring_layoutで代替
+            layout_k = 2 / (len(G.nodes()) ** 0.5)
+            pos = nx.spring_layout(
+                G,
+                k=layout_k,
+                iterations=500,
+                seed=42,
+                scale=2,
+                weight="weight"
+            )
 
-        # ノードサイズを単語の出現頻度に基づいて計算（より適切なスケーリング）
+        # ノードサイズを単語の出現頻度に基づいて計算
         node_sizes = [max(300, word_freq.get(node, 1) * 150) for node in G.nodes()]
 
         # エッジの重みを正規化して透明度と幅に反映
@@ -729,7 +933,7 @@ class JapaneseTextAnalyzer:
             ax=ax
         )
 
-        ax.set_title(f"共起ネットワーク（上位 {edge_count} エッジ、{len(G.nodes())} ノード）", fontsize=16, pad=20, weight='bold')
+        ax.set_title(f"共起ネットワーク（{len(G.nodes())} ノード、{len(G.edges())} エッジ）\n{window_mode}形式、{self_loop_mode}", fontsize=16, pad=20, weight='bold')
         ax.axis("off")
         plt.tight_layout()
 
