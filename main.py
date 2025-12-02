@@ -242,6 +242,16 @@ class JapaneseTextAnalyzer:
         self.window_var = tk.IntVar(value=5)
         ttk.Spinbox(param_frame, from_=2, to=20, textvariable=self.window_var, width=5).pack(side=tk.LEFT, padx=5)
 
+        ttk.Label(param_frame, text="ノード色パレット:").pack(side=tk.LEFT, padx=5)
+        self.network_cmap_var = tk.StringVar(value="Pastel1")
+        ttk.Combobox(
+            param_frame,
+            values=["Pastel1", "Pastel2", "Set3", "Accent", "tab20"],
+            textvariable=self.network_cmap_var,
+            state="readonly",
+            width=10
+        ).pack(side=tk.LEFT, padx=2)
+
         # 追加: WordCloud 画像サイズ設定（タブで事前指定）
         ttk.Label(param_frame, text="WordCloud 幅:").pack(side=tk.LEFT, padx=5)
         self.wc_width_var = tk.IntVar(value=1000)
@@ -638,7 +648,15 @@ class JapaneseTextAnalyzer:
                 comm_map[n] = idx
 
         # レイアウト計算（改善版パラメータ）
-        pos = nx.spring_layout(G, k=2.5, iterations=150, seed=42, scale=2)
+        layout_k = 1 / max(len(G.nodes()), 1) ** 0.5
+        pos = nx.spring_layout(
+            G,
+            k=layout_k,
+            iterations=300,
+            seed=42,
+            scale=2,
+            weight="weight"
+        )
 
         # ノードサイズを単語の出現頻度に基づいて計算（より適切なスケーリング）
         node_sizes = [max(300, word_freq.get(node, 1) * 150) for node in G.nodes()]
@@ -647,14 +665,18 @@ class JapaneseTextAnalyzer:
         edges = G.edges()
         weights = [G[u][v]['weight'] for u, v in edges]
         max_weight = max(weights) if weights else 1
-        min_weight = min(weights) if weights else 1
-        normalized_weights = [(w - min_weight) / (max_weight - min_weight + 0.001) for w in weights]
-        edge_widths = [1 + normalized_w * 5 for normalized_w in normalized_weights]
+        normalized_weights = [w / max_weight for w in weights]
+        edge_widths = [1.5 + normalized_w * 6 for normalized_w in normalized_weights]
         edge_alphas = [0.3 + normalized_w * 0.5 for normalized_w in normalized_weights]
 
         # ノードの色をコミュニティに基づいて設定
-        cmap = cm.get_cmap('tab20') if len(communities) <= 20 else cm.get_cmap('hsv')
-        colors = [cmap(comm_map.get(n, 0) % 20 / 20) for n in G.nodes()]
+        cmap_name = getattr(self, "network_cmap_var", tk.StringVar(value="Pastel1")).get()
+        cmap = cm.get_cmap(cmap_name)
+        num_colors = getattr(cmap, "N", 20)
+        colors = [
+            cmap((comm_map.get(n, 0) % num_colors) / max(num_colors - 1, 1))
+            for n in G.nodes()
+        ]
 
         # ノード描画
         nx.draw_networkx_nodes(
