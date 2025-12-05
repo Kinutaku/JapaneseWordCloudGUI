@@ -29,6 +29,8 @@ import itertools
 from matplotlib import cm
 import csv
 import io
+from PIL import Image
+import numpy as np
 
 
 
@@ -71,19 +73,23 @@ class JapaneseTextAnalyzer:
         self.pos_cache = []
         self.original_lines = []  # 【新機能】行情報を保持
 
+        # --- 追加: 分かち書き（ストップワード除去前）行情報と連語ルール ---
+        self.pre_tokens_lines = []          # 各行ごとの MeCab 分かち書き（ストップワード除去前）
+        self.merge_rules = []               # ルールリスト: {"len":n, "seq":tuple(...), "merged": "結合語"}
+
         # ストップワード
         self.stop_words = set([
-            'の', 'に', 'は', 'を', 'た', 'が', 'で', 'て', 'と', 'し', 'れ', 'さ',
-            'ある', 'いる', 'も', 'する', 'から', 'な', 'こと', 'として', 'い',
-            'や', 'れる', 'など', 'なっ', 'ない', 'この', 'ため', 'その', 'あっ',
-            'よう', 'また', 'もの', 'という', 'あり', 'まで', 'られ', 'なる',
-            'へ', 'か', 'だ', 'これ', 'によって', 'により', 'おり', 'より', 'による',
-            'ず', 'なり', 'られる', 'において', 'ば', 'なかっ', 'なく', 'しかし',
-            'について', 'せ', 'だっ', 'その後', 'できる', 'それ', 'う', 'ので',
-            'なお', 'のみ', 'でき', 'き', 'つ', 'における', 'および', 'いう',
-            'さらに', 'でも', 'ら', 'たり', 'その他', 'に関する', 'たち', 'ます',
-            'ん', 'なら', 'に対して', '特に', 'せる', 'あるいは', 'まし',
-            'ながら', 'ただし', 'かつて', 'ください', 'なし', 'これら', 'それら'
+            '（','）','(',')','［','］','[',']','{','}','【','】','※','→','⇒','…','‥','…','—','〜','%','!','?','！？','?!',
+            'へと','よりも','つつ','ながらも','だろ','だろう','でしょう','です','でした','ますが','ません','ませんでした','んで','のでしょう','のでした',
+            'ところ','ところが','ところで','ために','ための','ためには','わけ','わけで','わけでは','はず','はずが','はずだ','ものの','ものと','ことが','ことに','ことから','それぞれ','それぞれの','ように','ような','ようで',
+            'こんな','そんな','あんな','どの','どれ','どう','どういった','ここ','そこ','あそこ','どこ','こちら','そちら','あちら',
+            'まず','次に','そして','一方','ただ','だが','その結果','結果として','つまり','要するに',
+            '的','的な','的に','等','等の','等について','化','性',
+            '0','1','2','3','4','5','6','7','8','9',
+            '０','１','２','３','４','５','６','７','８','９',
+            '年','月','日','時','分','％',
+            'の', 'に', 'は', 'を', 'た', 'が', 'で', 'て', 'と', 'し', 'れ', 'さ', 'ある', 'いる', 'も', 'する', 'から', 'な', 'こと', 'として', 'い', 'や', 'れる', 'など', 'なっ', 'ない', 'この', 'ため', 'その', 'あっ', 'よう', 'また', 'もの', 'という', 'あり', 'まで', 'られ', 'なる', 'へ', 'か', 'だ', 'これ', 'によって', 'により', 'おり', 'より', 'による', 'ず', 'なり', 'られる', 'において', 'ば', 'なかっ', 'なく', 'しかし', 'について', 'せ', 'だっ', 'その後', 'できる', 'それ', 'う', 'ので', 'なお', 'のみ', 'でき', 'き', 'つ', 'における', 'および', 'いう', 'さらに', 'でも', 'ら', 'たり', 'その他', 'に関する', 'たち', 'ます', 'ん', 'なら', 'に対して', '特に', 'せる', 'あるいは', 'まし', 'ながら', 'ただし', 'かつて', 'ください', 'なし', 'これら', 'それら',"、","。","・"
+
         ])
 
         self.setup_ui()
@@ -122,6 +128,9 @@ class JapaneseTextAnalyzer:
 
         # タブ1: テキスト入力
         self.setup_input_tab()
+
+        # --- 追加: 連語結合タブ ---
+        self.setup_merge_tab()
 
         # タブ2: 単語編集
         self.setup_edit_tab()
@@ -175,9 +184,58 @@ class JapaneseTextAnalyzer:
         input_frame.columnconfigure(0, weight=1)
         input_frame.rowconfigure(2, weight=1)
 
+    def setup_merge_tab(self):
+        """新規タブ: 連語（2/3/4語）を結合して1語として扱うルールを管理"""
+        merge_frame = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(merge_frame, text="2. 連語結合")
+
+        # 上段: 元の分かち書き（ストップワード除去前）を表示するエリア
+        ttk.Label(merge_frame, text="分かち書き（ストップワード除去前）:").pack(anchor=tk.W)
+        self.pre_token_area = scrolledtext.ScrolledText(merge_frame, width=100, height=12, wrap=tk.WORD)
+        self.pre_token_area.pack(fill=tk.BOTH, expand=False, pady=4)
+
+        preview_btn_frame = ttk.Frame(merge_frame); preview_btn_frame.pack(fill=tk.X)
+        ttk.Button(preview_btn_frame, text="元テキストを分かち書き表示", command=self.show_pre_tokenized).pack(side=tk.LEFT, padx=4)
+        ttk.Button(preview_btn_frame, text="分かち書きを更新(再解析)", command=self.update_pre_tokens).pack(side=tk.LEFT, padx=4)
+
+        # 中段: ルール作成・一覧
+        rule_frame = ttk.LabelFrame(merge_frame, text="結合ルール（2〜4語）", padding=6)
+        rule_frame.pack(fill=tk.BOTH, expand=False, pady=6)
+
+        control_row = ttk.Frame(rule_frame); control_row.pack(fill=tk.X, pady=4)
+        ttk.Label(control_row, text="語数:").pack(side=tk.LEFT, padx=4)
+        self.merge_len_var = tk.IntVar(value=2)
+        ttk.Combobox(control_row, values=[2,3,4], textvariable=self.merge_len_var, width=4, state="readonly").pack(side=tk.LEFT)
+
+        ttk.Label(control_row, text="結合する語（スペース区切り）:").pack(side=tk.LEFT, padx=6)
+        self.merge_seq_entry = ttk.Entry(control_row, width=40); self.merge_seq_entry.pack(side=tk.LEFT, padx=4)
+
+        ttk.Label(control_row, text="結合後の語:").pack(side=tk.LEFT, padx=6)
+        self.merge_to_entry = ttk.Entry(control_row, width=20); self.merge_to_entry.pack(side=tk.LEFT, padx=4)
+
+        ttk.Button(control_row, text="追加", command=self.add_merge_rule).pack(side=tk.LEFT, padx=4)
+        ttk.Button(control_row, text="削除", command=self.remove_selected_merge_rule).pack(side=tk.LEFT, padx=4)
+
+        # ルール一覧
+        self.merge_rule_listbox = tk.Listbox(rule_frame, height=6)
+        self.merge_rule_listbox.pack(fill=tk.BOTH, expand=True, pady=4)
+
+        # 下段: プレビュー・適用
+        action_frame = ttk.Frame(merge_frame); action_frame.pack(fill=tk.X, pady=6)
+        ttk.Button(action_frame, text="プレビュー（結合後の分かち書き）", command=self.apply_merge_rules_preview).pack(side=tk.LEFT, padx=6)
+        ttk.Button(action_frame, text="適用して編集領域を更新（ストップワード除去後）", command=self.apply_merge_rules_and_update_edit_area).pack(side=tk.LEFT, padx=6)
+
+        # プレビュー表示領域
+        ttk.Label(merge_frame, text="プレビュー:").pack(anchor=tk.W, pady=(8,0))
+        self.merge_preview_area = scrolledtext.ScrolledText(merge_frame, width=100, height=10, wrap=tk.WORD)
+        self.merge_preview_area.pack(fill=tk.BOTH, expand=True, pady=4)
+
+        # 初期化表示
+        self.update_pre_tokens()
+
     def setup_edit_tab(self):
         edit_frame = ttk.Frame(self.notebook, padding="10")
-        self.notebook.add(edit_frame, text="2. 単語編集")
+        self.notebook.add(edit_frame, text="3. 単語編集")
 
         # 左右分割
         left_frame = ttk.Frame(edit_frame)
@@ -277,6 +335,22 @@ class JapaneseTextAnalyzer:
         self.wc_height_var = tk.IntVar(value=600)
         ttk.Spinbox(param_grid, from_=100, to=5000, textvariable=self.wc_height_var, width=7).grid(row=3, column=3, padx=5, pady=2, sticky=tk.W)
 
+        # 【新機能】WordCloud形状選択
+        ttk.Label(param_grid, text="WordCloud形状:").grid(row=8, column=0, padx=5, pady=2, sticky=tk.W)
+        self.wc_shape_var = tk.StringVar(value="rectangle")
+        shape_frame = ttk.Frame(param_grid)
+        shape_frame.grid(row=8, column=1, columnspan=3, padx=5, pady=2, sticky=tk.W)
+        ttk.Radiobutton(shape_frame, text="四角形", variable=self.wc_shape_var, value="rectangle").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(shape_frame, text="楕円形", variable=self.wc_shape_var, value="ellipse").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(shape_frame, text="カスタム画像", variable=self.wc_shape_var, value="custom").pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(param_grid, text="カスタム画像パス:").grid(row=9, column=0, padx=5, pady=2, sticky=tk.W)
+        self.wc_custom_image_var = tk.StringVar(value="")
+        custom_img_frame = ttk.Frame(param_grid)
+        custom_img_frame.grid(row=9, column=1, columnspan=3, padx=5, pady=2, sticky=tk.EW)
+        ttk.Entry(custom_img_frame, textvariable=self.wc_custom_image_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(custom_img_frame, text="参照...", command=self.select_wordcloud_image).pack(side=tk.LEFT, padx=2)
+
         # 共起ネットワーク出力サイズ
         ttk.Label(param_grid, text="ネットワーク幅:").grid(row=4, column=0, padx=5, pady=2, sticky=tk.W)
         self.net_width_var = tk.IntVar(value=1200)
@@ -307,12 +381,22 @@ class JapaneseTextAnalyzer:
         ttk.Radiobutton(mode_frame, text="スライディングウィンドウ", variable=self.window_mode_var, value="sliding").pack(side=tk.LEFT, padx=2)
         ttk.Radiobutton(mode_frame, text="行ごと", variable=self.window_mode_var, value="line").pack(side=tk.LEFT, padx=2)
 
-        # グラフ生成ボタンを縦方向に配置して見切れを防止
+        # --- 追加: 最小共起回数（ネットワーク/表でフィルタ） ---
+        ttk.Label(param_grid, text="最小共起回数:").grid(row=12, column=0, padx=5, pady=2, sticky=tk.W)
+        self.min_cooc_var = tk.IntVar(value=1)
+        ttk.Spinbox(param_grid, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=12, column=1, padx=5, pady=2, sticky=tk.W)
+
+        # --- 追加: 連続同一語を1つとして扱うオプション ---
+        self.collapse_consecutive_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(param_grid, text="連続する同一単語を1つとして扱う", variable=self.collapse_consecutive_var).grid(row=13, column=0, columnspan=3, padx=5, pady=2, sticky=tk.W)
+
+        # 追加: 実行ボタン（縦に配置して見切れ防止）
         action_frame = ttk.Frame(param_frame)
         action_frame.pack(side=tk.RIGHT, padx=5)
         ttk.Button(action_frame, text="WordCloud生成", command=self.on_generate_wordcloud).grid(row=0, column=0, pady=2, sticky=tk.EW)
         ttk.Button(action_frame, text="共起ネットワーク生成", command=self.on_generate_network).grid(row=1, column=0, pady=2, sticky=tk.EW)
         ttk.Button(action_frame, text="頻度グラフ生成", command=self.on_generate_frequency_chart).grid(row=2, column=0, pady=2, sticky=tk.EW)
+        ttk.Button(action_frame, text="共起頻度表示", command=self.show_cooccurrence_table).grid(row=3, column=0, pady=2, sticky=tk.EW)
 
         edit_frame.columnconfigure(0, weight=1)
         edit_frame.columnconfigure(1, weight=2)
@@ -337,6 +421,10 @@ class JapaneseTextAnalyzer:
         # 頻度グラフ
         self.freq_frame = ttk.Frame(self.vis_notebook)
         self.vis_notebook.add(self.freq_frame, text="頻度グラフ")
+
+        # --- 追加: 共起頻度表タブ（第三タブ内） ---
+        self.cooc_frame = ttk.Frame(self.vis_notebook)
+        self.vis_notebook.add(self.cooc_frame, text="共起頻度表")
 
     def load_file(self):
         filepath = filedialog.askopenfilename(
@@ -502,9 +590,27 @@ class JapaneseTextAnalyzer:
                 # テキストエリアに確実に挿入
                 self.text_area.delete(1.0, tk.END)
                 self.text_area.insert(1.0, combined_text)
-                # 行情報と元テキストを保持
+                # 行情報と元テキストを保持（生テキスト行）
                 self.original_text = combined_text
                 self.original_lines = text_lines
+
+                # --- 追加: CSV取り込み直後に MeCab で再解析して pre_tokens_lines を更新し、
+                #     original_lines を一貫して「ストップワード除去済みのトークン列（文字列）」に整備する ---
+                try:
+                    self.update_pre_tokens()  # pre_tokens_lines を生成
+                    # original_lines を token-list -> " " 結合 の形式で更新（ストップワード除去）
+                    normalized_lines = []
+                    for surfaces in self.pre_tokens_lines:
+                        if not surfaces:
+                            continue
+                        line_tokens = [s for s in surfaces if s not in self.stop_words and len(s) > 1]
+                        if line_tokens:
+                            normalized_lines.append(" ".join(line_tokens))
+                    # 上書きしておく（以降の行モードはこの整備済み original_lines を利用する）
+                    self.original_lines = normalized_lines
+                except Exception:
+                    # 失敗しても致命的ではないので続行
+                    pass
 
                 col_window.destroy()
                 messagebox.showinfo("完了", f"{len(selected_indices)}列を結合しました。")
@@ -554,19 +660,31 @@ class JapaneseTextAnalyzer:
 
         self.original_text = text
 
+        # ----- 追加: 分かち書き（ストップワード除去前）を行単位で保持 -----
+        self.pre_tokens_lines = []
+        for raw_line in text.split('\n'):
+            surfaces, _ = self.parse_with_pos(raw_line)
+            # そのままの分かち書きを保持（ストップワード除去前）
+            if surfaces:
+                self.pre_tokens_lines.append(surfaces)
+            else:
+                self.pre_tokens_lines.append([])
+
         # 【改善】行情報をトークン化済みで保持（行ごとの共起計算用）
         self.original_lines = []
-        for raw_line in text.split('\n'):
-            line_surfaces, _ = self.parse_with_pos(raw_line)
-            line_tokens = [s for s in line_surfaces if s not in self.stop_words and len(s) > 1]
+        for raw_line, surfaces in zip(text.split('\n'), self.pre_tokens_lines):
+            # ここでストップワードを削除して original_lines を作成（共起計算用）
+            line_tokens = [s for s in surfaces if s not in self.stop_words and len(s) > 1]
             if line_tokens:
                 self.original_lines.append(" ".join(line_tokens))
 
+        # 全文の解析（pre_tokens と pos を取得）
         surfaces, pos_list = self.parse_with_pos(text)
         if not surfaces:
             messagebox.showerror("エラー", "MeCabの解析結果を取得できませんでした。")
             return
 
+        # フィルタ後トークン（編集領域に入れるのもの）: ストップワードを除去
         self.tokens = [s for s in surfaces if s not in self.stop_words and len(s) > 1]
         # POS cache aligned with filtered tokens
         self.pos_cache = [p for s, p in zip(surfaces, pos_list) if s in self.tokens]
@@ -577,7 +695,9 @@ class JapaneseTextAnalyzer:
         self.refresh_word_list()
 
         # タブ切り替え
-        self.notebook.select(1)
+        # 新設した「連語結合」タブの影響で編集タブのインデックスが変わっている可能性があるが
+        # notebook.select はオブジェクト参照で使えるため既存の動作を維持
+        self.notebook.select(self.notebook.index("2. 単語編集") if "2. 単語編集" in [self.notebook.tab(i, option="text") for i in range(self.notebook.index("end"))] else 1)
         messagebox.showinfo("完了", f"{len(self.tokens)}個の単語を抽出しました。")
 
     def refresh_word_list(self):
@@ -665,41 +785,71 @@ class JapaneseTextAnalyzer:
 
 
     def delete_by_pos(self):
+        """
+        選択した品詞だけを「保持」して、それ以外を削除するUIに変更。
+        複数品詞を選択可能（Ctrl/Shiftで複数選択）で、選択された品詞のみ残します。
+        """
         if not self.tokens:
             return
 
         pos_window = tk.Toplevel(self.root)
-        pos_window.title("品詞で削除")
-        pos_window.geometry("360x220")
+        pos_window.title("保持する品詞を選択（複数選択可）")
+        pos_window.geometry("420x360")
 
-        ttk.Label(pos_window, text="削除する品詞を選択してください").pack(pady=8)
+        ttk.Label(pos_window, text="保持したい品詞を複数選択してください").pack(pady=8)
 
-        pos_options = [
-            "名詞", "動詞", "形容詞", "副詞", "形容動詞", "助詞", "助動詞", "記号"
-        ]
-        # 現在存在する品詞を表示
+        # 現在の品詞分布を取得
         current_pos_counts = Counter(self.pos_cache)
-        if current_pos_counts:
-            info_lines = [f"{p}: {current_pos_counts[p]}件" for p in pos_options if p in current_pos_counts]
-            extra = [f"{p}: {n}件" for p, n in current_pos_counts.items() if p not in pos_options]
-            info_lines.extend(extra)
-            ttk.Label(pos_window, text="現在の品詞内訳").pack(pady=(4, 2))
-            info_text = "\n".join(info_lines) if info_lines else "なし"
-            ttk.Label(pos_window, text=info_text, justify=tk.LEFT).pack()
+        if not current_pos_counts:
+            ttk.Label(pos_window, text="品詞情報がありません。").pack(pady=6)
+            return
 
-        selected_pos = tk.StringVar(value=pos_options[0])
-        ttk.Combobox(pos_window, values=pos_options, textvariable=selected_pos, state="readonly").pack(pady=8)
+        # 品詞一覧を Listbox（複数選択）で表示
+        list_frame = ttk.Frame(pos_window)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
 
-        def perform_delete():
-            target = selected_pos.get()
-            filtered_tokens = [t for t, p in zip(self.tokens, self.pos_cache) if p != target]
+        scroll = ttk.Scrollbar(list_frame)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.pos_listbox = tk.Listbox(list_frame, selectmode=tk.MULTIPLE, yscrollcommand=scroll.set, height=12)
+        self.pos_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.config(command=self.pos_listbox.yview)
+
+        # 表示用に "品詞 (件数)" を入れる（後で分割して品詞部分だけを取り出す）
+        for pos, cnt in sorted(current_pos_counts.items(), key=lambda x: (-x[1], x[0])):
+            self.pos_listbox.insert(tk.END, f"{pos} ({cnt}件)")
+
+        # ヘルプ行
+        ttk.Label(pos_window, text="※選択した品詞のみが残ります。選択なしはキャンセル。", foreground="gray").pack(pady=(4,0))
+
+        def perform_keep():
+            selection = self.pos_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("警告", "最低1つの品詞を選択してください。")
+                return
+            # 選択アイテムから品詞文字列を抽出（"品詞 (件数)" -> 品詞）
+            selected_pos = set()
+            for i in selection:
+                item = self.pos_listbox.get(i)
+                pos_str = item.split(' (')[0]
+                selected_pos.add(pos_str)
+
+            # self.tokens と self.pos_cache を同時走査して、選択品詞のみ保持
+            filtered_tokens = [t for t, p in zip(self.tokens, self.pos_cache) if p in selected_pos]
+
+            # 編集エリアへ反映
             self.edit_area.delete(1.0, tk.END)
             self.edit_area.insert(1.0, " ".join(filtered_tokens))
+
+            # refresh 状態（word_freq, pos_cache などを更新）
             self.refresh_word_list()
+
             pos_window.destroy()
 
-        ttk.Button(pos_window, text="削除", command=perform_delete).pack(pady=10)
-
+        btn_frame = ttk.Frame(pos_window)
+        btn_frame.pack(pady=8)
+        ttk.Button(btn_frame, text="選択品詞のみ保持", command=perform_keep).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="キャンセル", command=pos_window.destroy).pack(side=tk.LEFT, padx=6)
     def delete_selected_word(self):
         selection = self.word_listbox.curselection()
         if not selection:
@@ -771,6 +921,14 @@ class JapaneseTextAnalyzer:
         self.notebook.select(2)
         messagebox.showinfo("完了", "可視化が完了しました。")
 
+    def select_wordcloud_image(self):
+        """WordCloud用のカスタム画像を選択"""
+        filepath = filedialog.askopenfilename(
+            filetypes=[("PNG画像", "*.png"), ("JPEG画像", "*.jpg"), ("すべてのファイル", "*.*")]
+        )
+        if filepath:
+            self.wc_custom_image_var.set(filepath)
+
     def generate_wordcloud(self, word_freq):
         # 既存のウィジェットをクリア
         for widget in self.wordcloud_frame.winfo_children():
@@ -780,17 +938,52 @@ class JapaneseTextAnalyzer:
         width = getattr(self, "wc_width_var", tk.IntVar(value=1000)).get()
         height = getattr(self, "wc_height_var", tk.IntVar(value=600)).get()
 
+        # 【新機能】形状に応じたマスク生成
+        shape = getattr(self, "wc_shape_var", tk.StringVar(value="rectangle")).get()
+        mask = None
+        
+        if shape == "ellipse":
+            # 楕円形マスク生成（デフォルト楕円画像を使用）
+            ellipse_path = Path(__file__).parent / "frame_image" / "楕円.png"
+            if ellipse_path.exists():
+                try:
+                    img = Image.open(ellipse_path)
+                    img = img.resize((width, height))
+                    mask = np.array(img.convert('L'))
+                except Exception as e:
+                    messagebox.showwarning("警告", f"楕円画像の読み込みに失敗しました: {e}\n四角形で生成します。")
+                    mask = None
+            else:
+                messagebox.showwarning("警告", f"楕円画像が見つかりません: {ellipse_path}\n四角形で生成します。")
+                mask = None
+        elif shape == "custom":
+            # カスタム画像マスク
+            img_path = getattr(self, "wc_custom_image_var", tk.StringVar(value="")).get()
+            if img_path and Path(img_path).exists():
+                try:
+                    img = Image.open(img_path)
+                    img = img.resize((width, height))
+                    mask = np.array(img.convert('L'))
+                except Exception as e:
+                    messagebox.showwarning("警告", f"カスタム画像の読み込みに失敗しました: {e}\n四角形で生成します。")
+                    mask = None
+
         # WordCloud生成
-        wc = WordCloud(
-            width=width,
-            height=height,
-            background_color='white',
-            font_path=self.font_path,
-            relative_scaling=0.5,
-            min_font_size=10,
-            max_font_size=100,
-            colormap='tab10'
-        ).generate_from_frequencies(word_freq)
+        wc_kwargs = {
+            "width": width,
+            "height": height,
+            "background_color": 'white',
+            "font_path": self.font_path,
+            "relative_scaling": 0.5,
+            "min_font_size": 10,
+            "max_font_size": 100,
+            "colormap": 'tab10'
+        }
+        if mask is not None:
+            wc_kwargs["mask"] = mask
+            wc_kwargs["contour_width"] = 0  # 【改善】輪郭線を非表示
+        
+        wc = WordCloud(**wc_kwargs).generate_from_frequencies(word_freq)
 
         # 描画（Figure サイズは表示用に固定、画像保存は save_figure で行う）
         fig, ax = plt.subplots(figsize=(12, 7))
@@ -822,23 +1015,31 @@ class JapaneseTextAnalyzer:
         # 共起ペア抽出
         cooc_pairs = []
         
+        # --- collapse 対応: トークン列を必要に応じて変換 ---
+        def _maybe_collapse(seq):
+            if getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get():
+                return self._collapse_consecutive(seq)
+            return seq
+
         if window_mode == "sliding":
-            # スライディングウィンドウ形式（従来通り）
-            for i in range(len(tokens)):
-                if tokens[i] not in word_freq:
+            tokens_used = _maybe_collapse(tokens)
+            # スライディングウィンドウ形式（従来通り）で tokens_used を使う
+            for i in range(len(tokens_used)):
+                if tokens_used[i] not in word_freq:
                     continue
-                for j in range(i + 1, min(i + window_size, len(tokens))):
-                    if tokens[j] not in word_freq:
+                for j in range(i + 1, min(i + window_size, len(tokens_used))):
+                    if tokens_used[j] not in word_freq:
                         continue
-                    pair = tuple(sorted([tokens[i], tokens[j]]))
+                    pair = tuple(sorted([tokens_used[i], tokens_used[j]]))
                     cooc_pairs.append(pair)
         else:
-            # 【改善】行ごと形式：保持した行情報を使用
+            # 行ごと形式：保持した行情報を使用（行内で折りたたむ）
             for line in self.original_lines:
                 if not line.strip():  # 空行スキップ
                     continue
-                # 行を分割しトークン化（既に分かち書きされている場合）
                 line_tokens = line.split()
+                if getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get():
+                    line_tokens = self._collapse_consecutive(line_tokens)
                 for i in range(len(line_tokens)):
                     if line_tokens[i] not in word_freq:
                         continue
@@ -847,18 +1048,53 @@ class JapaneseTextAnalyzer:
                             continue
                         pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
                         cooc_pairs.append(pair)
+            # 可能であれば MeCab で分かち書きした pre_tokens_lines を使い、
+            # それがなければ従来の文字列 split を使う（ただし常に word_freq でフィルタする）
+            if getattr(self, "pre_tokens_lines", None):
+                for surfaces in self.pre_tokens_lines:
+                    if not surfaces:
+                        continue
+                    # ストップワード除去・長さ条件を統一して適用
+                    line_tokens = [s for s in surfaces if s in word_freq]
+                    if getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get():
+                        line_tokens = self._collapse_consecutive(line_tokens)
+                    for i in range(len(line_tokens)):
+                        for j in range(i + 1, len(line_tokens)):
+                            pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
+                            cooc_pairs.append(pair)
+            else:
+                for line in self.original_lines:
+                    if not line.strip():
+                        continue
+                    line_tokens = line.split()
+                    if getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get():
+                        line_tokens = self._collapse_consecutive(line_tokens)
+                    for i in range(len(line_tokens)):
+                        if line_tokens[i] not in word_freq:
+                            continue
+                        for j in range(i + 1, len(line_tokens)):
+                            if line_tokens[j] not in word_freq:
+                                continue
+                            pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
+                            cooc_pairs.append(pair)
 
         cooc_count = Counter(cooc_pairs)
 
+        # --- 最小共起回数でペアを事前にフィルタ ---
+        min_cooc = getattr(self, "min_cooc_var", tk.IntVar(value=1)).get()
+        cooc_count = Counter({p: c for p, c in cooc_count.items() if c >= min_cooc})
+
         if not cooc_count:
-            ttk.Label(self.network_frame, text="共起データがありません").pack(pady=20)
+            ttk.Label(self.network_frame, text=f"共起データがありません（min共起={min_cooc}）").pack(pady=20)
             return
 
         # ネットワーク構築（指定した組数を使用）
         G = nx.Graph()
         for (word1, word2), count in cooc_count.most_common(edge_count):
-            # 【新機能】自己ループ（同じ単語同士）の制御
+            # 自己ループの制御
             if word1 == word2 and self_loop_mode == "remove":
+                continue
+            if count < min_cooc:
                 continue
             G.add_edge(word1, word2, weight=count)
 
@@ -931,10 +1167,14 @@ class JapaneseTextAnalyzer:
             for n in G.nodes()
         ]
 
+        # 【改善】ノードサイズ倍率を適用
+        node_size_scale = getattr(self, "node_size_scale_var", tk.DoubleVar(value=1.0)).get()
+        scaled_node_sizes = [size * node_size_scale for size in node_sizes]
+
         # ノード描画
         nx.draw_networkx_nodes(
             G, pos,
-            node_size=node_sizes,
+            node_size=scaled_node_sizes,
             node_color=colors,
             alpha=0.85,
             ax=ax,
@@ -942,22 +1182,36 @@ class JapaneseTextAnalyzer:
             edgecolors='#222'
         )
 
-        # エッジ描画（重みに応じた透明度）
-        for (u, v), width, alpha in zip(edges, edge_widths, edge_alphas):
+        # 【改善】エッジ描画（全エッジを共起強度で視別化）
+        for (u, v) in edges:
+            weight = G[u][v]['weight']
+            norm_weight = weight / max_weight
+            
+            # 強度に応じた色（グラデーション）
+            edge_color = plt.cm.Reds(norm_weight)
+            
+            # 強度が低い場合は破線
+            linestyle = 'solid' if norm_weight > 0.3 else 'dashed'
+            edge_width = 1.5 + norm_weight * 6
+            
             nx.draw_networkx_edges(
                 G, pos,
                 edgelist=[(u, v)],
-                width=width,
-                alpha=alpha,
-                edge_color='#666',
-                ax=ax
+                width=edge_width,
+                edge_color=[edge_color],
+                style=linestyle,
+                ax=ax,
+                alpha=0.7
             )
 
         # ラベル描画
         font_family = self.font_prop.get_name() if getattr(self, "font_prop", None) else "sans-serif"
+        font_size_scale = getattr(self, "font_size_scale_var", tk.DoubleVar(value=1.0)).get()
+        scaled_font_size = 9 * font_size_scale
+        
         nx.draw_networkx_labels(
             G, pos,
-            font_size=9,
+            font_size=scaled_font_size,
             font_family=font_family,
             font_weight='bold',
             ax=ax
@@ -965,7 +1219,80 @@ class JapaneseTextAnalyzer:
 
         ax.set_title(f"共起ネットワーク（{len(G.nodes())} ノード、{len(G.edges())} エッジ）\n{window_mode}形式、{self_loop_mode}", fontsize=16, pad=20, weight='bold')
         ax.axis("off")
-        plt.tight_layout()
+        
+        # 【改善】凡例を実際のデータ範囲で生成（間隔調整・統一）
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+        
+        # ノード頻度の範囲を取得
+        node_freqs = [word_freq.get(node, 1) for node in G.nodes()]
+        min_freq = min(node_freqs) if node_freqs else 1
+        max_freq = max(node_freqs) if node_freqs else 1
+        mid_freq = (min_freq + max_freq) // 2
+        
+        # ノードサイズの凡例
+        min_node_size = max(300, min_freq * 150)
+        mid_node_size = max(300, mid_freq * 150)
+        max_node_size = max(300, max_freq * 150)
+        
+        legend_elements = [
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=np.sqrt(min_node_size/np.pi), 
+                   label=f'ノード: 出現{min_freq}回 (最小)'),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=np.sqrt(mid_node_size/np.pi), 
+                   label=f'ノード: 出現{mid_freq}回 (中央)'),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=np.sqrt(max_node_size/np.pi), 
+                   label=f'ノード: 出現{max_freq}回 (最大)'),
+        ]
+        
+        # 【改善】エッジ（共起関係）の凡例 - 実際の描画ロジックと統一
+        if weights:
+            min_weight_val = min(weights)
+            max_weight_val = max(weights)
+            weight_range = max_weight_val - min_weight_val
+            
+            if weight_range == 0:
+                weight_range = 1
+            
+            # 凡例用の4段階サンプル
+            sample_weights = [
+                min_weight_val,
+                min_weight_val + weight_range // 3,
+                min_weight_val + weight_range * 2 // 3,
+                max_weight_val
+            ]
+            
+            # 空行を追加して見やすくする
+            legend_elements.append(Patch(facecolor='none', edgecolor='none', label=''))
+            legend_elements.append(Patch(facecolor='none', edgecolor='none', label='エッジ（共起関係）:'))
+            
+            for w in sample_weights:
+                norm_w = (w - min_weight_val) / max(weight_range, 1)
+                
+                # 実際の描画ロジックと同じ計算
+                edge_color_tuple = plt.cm.Reds(norm_w)
+                linestyle = 'solid' if norm_w > 0.3 else 'dashed'
+                
+                legend_elements.append(
+                    Line2D([0], [0], color=edge_color_tuple, linewidth=3, linestyle=linestyle,
+                           label=f'共起{int(w)}回 ({norm_w:.0%})')
+                )
+        
+        # 凡例を配置（自動調整）
+        legend = ax.legend(handles=legend_elements, loc='upper left', fontsize=7.5, title='凡例', 
+                  title_fontsize=8, framealpha=0.95, labelspacing=1.2, handlelength=2.5)
+        
+        # 凡例のサイズを計算して、プロット領域を調整
+        fig.canvas.draw()
+        legend_bbox = legend.get_window_extent(renderer=fig.canvas.get_renderer())
+        legend_width_inches = legend_bbox.width / fig.dpi
+        legend_height_inches = legend_bbox.height / fig.dpi
+        
+        # 凡例がプロット内に収まるようにサブプロットを調整
+        # 左マージンを増やす（凡例の幅に応じて）
+        left_margin = min(0.3, 0.1 + legend_width_inches / fig_w)
+        fig.subplots_adjust(left=left_margin, top=0.95, bottom=0.05, right=0.98)
+
+        plt.tight_layout(rect=[left_margin, 0.05, 0.98, 0.95])
 
         canvas = FigureCanvasTkAgg(fig, self.network_frame)
         canvas.draw()
@@ -1072,6 +1399,249 @@ class JapaneseTextAnalyzer:
             self.notebook.select(2)
         except Exception as e:
             messagebox.showerror("エラー", f"頻度グラフの生成中に問題が発生しました: {e}")
+
+    def show_cooccurrence_table(self):
+        """共起ペアの頻度を可視化タブ内で表示（CSV出力可能）"""
+        # clear previous contents
+        for w in self.cooc_frame.winfo_children():
+            w.destroy()
+
+        text = self.edit_area.get(1.0, tk.END).strip()
+        if not text:
+            ttk.Label(self.cooc_frame, text="単語データがありません。").pack(pady=10)
+            return
+
+        tokens = text.split()
+        if len(tokens) < 2:
+            ttk.Label(self.cooc_frame, text="共起ペアを計算するには単語が2つ以上必要です。").pack(pady=10)
+            return
+
+        word_freq = Counter(tokens)
+        window_size = self.window_var.get()
+        window_mode = getattr(self, "window_mode_var", tk.StringVar(value="sliding")).get()
+        collapse = getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get()
+
+        # ペア抽出（collapse を反映）
+        cooc_pairs = []
+        def maybe_collapse(seq):
+            return self._collapse_consecutive(seq) if collapse else seq
+
+        if window_mode == "sliding":
+            tokens_used = maybe_collapse(tokens)
+            for i in range(len(tokens_used)):
+                for j in range(i + 1, min(i + window_size, len(tokens_used))):
+                    pair = tuple(sorted([tokens_used[i], tokens_used[j]]))
+                    cooc_pairs.append(pair)
+        else:
+            # 行ごと形式：保持した行情報を使用（行内で折りたたむ）
+            for line in self.original_lines:
+                if not line.strip():
+                    continue
+                line_tokens = line.split()
+                if collapse:
+                    line_tokens = self._collapse_consecutive(line_tokens)
+                for i in range(len(line_tokens)):
+                    for j in range(i + 1, len(line_tokens)):
+                        pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
+                        cooc_pairs.append(pair)
+
+        if not cooc_pairs:
+            ttk.Label(self.cooc_frame, text="共起ペアが見つかりません。").pack(pady=10)
+            return
+
+        cooc_count = Counter(cooc_pairs)
+
+        # 最小共起回数フィルタ
+        min_cooc = getattr(self, "min_cooc_var", tk.IntVar(value=1)).get()
+        items = [(p[0], p[1], c) for p, c in cooc_count.items() if c >= min_cooc]
+        if not items:
+            ttk.Label(self.cooc_frame, text=f"min共起={min_cooc} を満たすペアがありません。").pack(pady=10)
+            return
+
+        # ヘッダー
+        ttk.Label(self.cooc_frame, text=f"共起ペア一覧（min共起={min_cooc}、全{len(items)}件）", font=("Meiryo", 12, "bold")).pack(pady=8)
+
+        # Treeview 表示
+        tree_frame = ttk.Frame(self.cooc_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        scrollbar = ttk.Scrollbar(tree_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        columns = ("単語1", "単語2", "共起回数")
+        tree = ttk.Treeview(tree_frame, columns=columns, height=20, yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=tree.yview)
+
+        # ヘッダー
+        tree.heading('#0', text='')
+        tree.column('#0', width=0, stretch=tk.NO)
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=150 if col != "共起回数" else 90, anchor=(tk.CENTER if col=="共起回数" else tk.W))
+
+        # データ挿入（頻度順）
+        for word1, word2, count in sorted(items, key=lambda x: x[2], reverse=True):
+            tree.insert('', tk.END, values=(word1, word2, count))
+
+        # CSV保存
+        def export_csv_from_tab():
+            filepath = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                initialfile="cooccurrence.csv",
+                filetypes=[("CSVファイル", "*.csv"), ("すべてのファイル", "*.*")]
+            )
+            if not filepath:
+                return
+           
+
+            try:
+                with open(filepath, 'w', encoding='utf-8-sig', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(columns)
+                    for word1, word2, count in sorted(items, key=lambda x: x[2], reverse=True):
+                        writer.writerow([word1, word2, count])
+                messagebox.showinfo("完了", f"保存しました: {filepath}")
+            except Exception as e:
+                messagebox.showerror("エラー", f"保存に失敗しました: {e}")
+
+        btn_frame = ttk.Frame(self.cooc_frame)
+        btn_frame.pack(pady=6)
+        ttk.Button(btn_frame, text="CSV出力", command=export_csv_from_tab).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="共起一覧を更新", command=self.show_cooccurrence_table).pack(side=tk.LEFT, padx=6)
+
+    # --- 追加ユーティリティ ---
+    def _collapse_consecutive(self, seq):
+        """連続して同じ要素が続く場合、それらを1つにまとめて返す。"""
+        if not seq:
+            return []
+        out = [seq[0]]
+        for s in seq[1:]:
+            if s == out[-1]:
+                continue
+            out.append(s)
+        return out
+    
+    # --- ここから追加メソッド（setup_merge_tab の直後に配置） ---
+    def update_pre_tokens(self):
+        """original_text を MeCab で再解析して pre_tokens_lines を更新する（ストップワード除去前）"""
+        self.pre_tokens_lines = []
+        text = getattr(self, "original_text", "") or self.text_area.get(1.0, tk.END).strip()
+        if not text:
+            if hasattr(self, "pre_token_area"):
+                self.pre_token_area.delete(1.0, tk.END)
+            return
+
+        lines = text.split('\n')
+        for raw_line in lines:
+            surfaces, _ = self.parse_with_pos(raw_line)
+            self.pre_tokens_lines.append(surfaces if surfaces else [])
+
+        # 表示を更新
+        self.show_pre_tokenized()
+
+    def show_pre_tokenized(self):
+        """pre_tokens_lines をテキスト領域に表示（行ごとにスペースで区切る）"""
+        if not hasattr(self, "pre_tokens_lines") or not self.pre_tokens_lines:
+            self.update_pre_tokens()
+        if not hasattr(self, "pre_token_area"):
+            return
+        self.pre_token_area.delete(1.0, tk.END)
+        for line_tokens in self.pre_tokens_lines:
+            if line_tokens:
+                self.pre_token_area.insert(tk.END, " ".join(line_tokens) + "\n")
+            else:
+                self.pre_token_area.insert(tk.END, "\n")
+
+    def add_merge_rule(self):
+        """ルールを追加（語数チェック・重複チェックあり）"""
+        raw = self.merge_seq_entry.get().strip()
+        if not raw:
+            messagebox.showwarning("警告", "結合する語を入力してください（スペース区切り）。")
+            return
+        seq = tuple(raw.split())
+        n = self.merge_len_var.get()
+        if len(seq) != n:
+            messagebox.showwarning("警告", f"指定した語数が一致しません（期待: {n}語）。")
+            return
+        merged = self.merge_to_entry.get().strip() or "".join(seq)
+        rule = {"len": n, "seq": seq, "merged": merged}
+        if any(r["seq"] == seq for r in self.merge_rules):
+            messagebox.showwarning("警告", "同じ語列のルールが既に存在します。")
+            return
+        self.merge_rules.append(rule)
+        self.merge_rule_listbox.insert(tk.END, f'{n}語: {" ".join(seq)} → {merged}')
+        # 入力クリア
+        self.merge_seq_entry.delete(0, tk.END)
+        self.merge_to_entry.delete(0, tk.END)
+
+    def remove_selected_merge_rule(self):
+        idx = self.merge_rule_listbox.curselection()
+        if not idx:
+            return
+        i = idx[0]
+        self.merge_rule_listbox.delete(i)
+        del self.merge_rules[i]
+
+    def apply_rules_to_tokens(self, tokens_line):
+        """与えられたトークン行に対して merge_rules を適用して新しいトークン行を返す（長いルール優先）"""
+        if not tokens_line:
+            return []
+        rules_sorted = sorted(self.merge_rules, key=lambda r: r["len"], reverse=True)
+        out = []
+        i = 0
+        L = len(tokens_line)
+        while i < L:
+            matched = False
+            for r in rules_sorted:
+                n = r["len"]
+                if i + n <= L and tuple(tokens_line[i:i+n]) == r["seq"]:
+                    out.append(r["merged"])
+                    i += n
+                    matched = True
+                    break
+            if not matched:
+                out.append(tokens_line[i])
+                i += 1
+        return out
+
+    def apply_merge_rules_preview(self):
+        """pre_tokens_lines に対してルールを適用した結果をプレビュー表示"""
+        if not hasattr(self, "pre_tokens_lines") or not self.pre_tokens_lines:
+            self.update_pre_tokens()
+        preview_lines = []
+        for tokens_line in self.pre_tokens_lines:
+            new_line = self.apply_rules_to_tokens(tokens_line) if self.merge_rules else tokens_line
+            preview_lines.append(" ".join(new_line))
+        if hasattr(self, "merge_preview_area"):
+            self.merge_preview_area.delete(1.0, tk.END)
+            self.merge_preview_area.insert(tk.END, "\n".join(preview_lines))
+
+    def apply_merge_rules_and_update_edit_area(self):
+        """ルールを適用 -> ストップワード除去 -> edit_area に反映 -> 単語リストを更新"""
+        if not hasattr(self, "pre_tokens_lines") or not self.pre_tokens_lines:
+            self.update_pre_tokens()
+
+        # --- 変更: 編集領域を更新する前に Listbox と同期して最新の stop_words を反映 ---
+        if hasattr(self, "stopword_listbox"):
+            try:
+                self.stop_words = set(self.stopword_listbox.get(0, tk.END))
+            except Exception:
+                # 万一の取得エラーは既存の self.stop_words を維持
+                pass
+
+        merged_tokens_all = []
+        for tokens_line in self.pre_tokens_lines:
+            new_line = self.apply_rules_to_tokens(tokens_line) if self.merge_rules else tokens_line
+            # ストップワード削除（結合は既に行われている）
+            filtered = [t for t in new_line if t not in self.stop_words and len(t) > 0]
+            merged_tokens_all.extend(filtered)
+        # 編集エリアへ反映
+        self.edit_area.delete(1.0, tk.END)
+        self.edit_area.insert(tk.END, " ".join(merged_tokens_all))
+        self.refresh_word_list()
+        messagebox.showinfo("完了", "結合ルールを適用し、編集領域を更新しました。")
+    # --- 追加メソッドここまで ---
 
 def main():
     root = tk.Tk()
