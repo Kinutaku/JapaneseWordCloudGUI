@@ -225,7 +225,7 @@ class VisualizationService:
         ax.axis("off")
         ax.set_title("共起ネットワーク", fontsize=16, pad=20)
         
-        # 凡例表示
+        # 凡例表示（プロットと重ならないように右側へ退避）
         if show_legend:
             from matplotlib.lines import Line2D
             from matplotlib.patches import Patch
@@ -283,18 +283,25 @@ class VisualizationService:
                     )
             
             # 凡例を配置（自動調整）
-            legend = ax.legend(handles=legend_elements, loc='upper left', fontsize=7.5, title='凡例', 
-                      title_fontsize=8, framealpha=0.95, labelspacing=1.2, handlelength=2.5)
-            
-            # 凡例のサイズを計算して、プロット領域を調整
+            legend = ax.legend(
+                handles=legend_elements,
+                loc="upper left",
+                bbox_to_anchor=(1.02, 1.0),
+                borderaxespad=0.0,
+                fontsize=7.5,
+                title="凡例",
+                title_fontsize=8,
+                framealpha=0.95,
+                labelspacing=1.2,
+                handlelength=2.5,
+            )
+
+            # 凡例ぶんの右余白を確保（動的に計算）
             fig.canvas.draw()
             legend_bbox = legend.get_window_extent(renderer=fig.canvas.get_renderer())
             legend_width_inches = legend_bbox.width / fig.dpi
-            
-            # 凡例がプロット内に収まるようにサブプロットを調整
-            left_margin = min(0.3, 0.1 + legend_width_inches / fig_w)
-            fig.subplots_adjust(left=left_margin, top=0.95, bottom=0.05, right=0.98)
-            plt.tight_layout(rect=[left_margin, 0.05, 0.98, 0.95])
+            right_margin = min(0.35, 0.05 + legend_width_inches / fig_w)
+            fig.subplots_adjust(left=0.05, right=max(0.6, 1 - right_margin), top=0.95, bottom=0.05)
         
         return fig
 

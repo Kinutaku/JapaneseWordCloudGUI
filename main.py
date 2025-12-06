@@ -1131,6 +1131,30 @@ class JapaneseTextAnalyzer:
         except Exception as e:
             messagebox.showerror("エラー", f"頻度グラフの生成中に問題が発生しました: {e}")
 
+    def save_figure(self, fig, prefix: str, fmt: str = "png"):
+        """matplotlib Figure をファイルに保存する共通処理。"""
+        default_ext = f".{fmt}"
+        initial_name = f"{prefix}.{fmt}"
+        filetypes = [
+            (f"{fmt.upper()}ファイル", f"*.{fmt}"),
+            ("PNGファイル", "*.png"),
+            ("SVGファイル", "*.svg"),
+            ("すべてのファイル", "*.*"),
+        ]
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=default_ext,
+            initialfile=initial_name,
+            filetypes=filetypes,
+        )
+        if not filepath:
+            return
+        try:
+            ext = Path(filepath).suffix.lower().lstrip(".") or fmt
+            fig.savefig(filepath, format=ext, bbox_inches="tight")
+            messagebox.showinfo("完了", f"保存しました: {filepath}")
+        except Exception as e:
+            messagebox.showerror("エラー", f"保存に失敗しました: {e}")
+
     def generate_frequency_chart(self, word_freq):
         # 既存のウィジェットをクリア
         for widget in self.freq_frame.winfo_children():
