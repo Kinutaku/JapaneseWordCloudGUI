@@ -299,120 +299,127 @@ class JapaneseTextAnalyzer:
         self.replace_to.pack(side=tk.LEFT, padx=2)
         ttk.Button(edit_control_frame, text="置換", command=self.replace_word).pack(side=tk.LEFT, padx=5)
 
-        self.edit_area = scrolledtext.ScrolledText(right_frame, width=60, height=20, wrap=tk.WORD)
+        self.edit_area = scrolledtext.ScrolledText(right_frame, width=60, height=15, wrap=tk.WORD)
         self.edit_area.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        # パラメータと実行ボタン
-        param_frame = ttk.Frame(right_frame)
-        param_frame.pack(fill=tk.X, pady=5)
+        # パラメータと実行ボタン（サブタブで機能ごとに分割）
+        param_notebook = ttk.Notebook(right_frame)
+        param_notebook.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        # 左側にパラメータ、右側にアクションを分けて配置
-        param_grid = ttk.Frame(param_frame)
-        param_grid.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        ttk.Label(param_grid, text="最小出現回数:").grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
-        self.min_freq_var = tk.IntVar(value=2)
-        ttk.Spinbox(param_grid, from_=1, to=20, textvariable=self.min_freq_var, width=7).grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
-
-        ttk.Label(param_grid, text="共起ウィンドウ:").grid(row=1, column=0, padx=5, pady=2, sticky=tk.W)
-        self.window_var = tk.IntVar(value=5)
-        ttk.Spinbox(param_grid, from_=2, to=20, textvariable=self.window_var, width=7).grid(row=1, column=1, padx=5, pady=2, sticky=tk.W)
-
-        ttk.Label(param_grid, text="ノード色パレット:").grid(row=2, column=0, padx=5, pady=2, sticky=tk.W)
-        self.network_cmap_var = tk.StringVar(value="Pastel1")
-        ttk.Combobox(
-            param_grid,
-            values=["Pastel1", "Pastel2", "Set3", "Accent", "tab20"],
-            textvariable=self.network_cmap_var,
-            state="readonly",
-            width=12
-        ).grid(row=2, column=1, padx=5, pady=2, sticky=tk.W)
-
-        ttk.Label(param_frame, text="ノード色パレット:").pack(side=tk.LEFT, padx=5)
-        self.network_cmap_var = tk.StringVar(value="Pastel1")
-        ttk.Combobox(
-            param_frame,
-            values=["Pastel1", "Pastel2", "Set3", "Accent", "tab20"],
-            textvariable=self.network_cmap_var,
-            state="readonly",
-            width=10
-        ).pack(side=tk.LEFT, padx=2)
-
-        # 追加: WordCloud 画像サイズ設定（タブで事前指定）
-        ttk.Label(param_grid, text="WordCloud 幅:").grid(row=3, column=0, padx=5, pady=2, sticky=tk.W)
+        # ===== タブ1: WordCloud生成 =====
+        wc_tab = ttk.Frame(param_notebook)
+        param_notebook.add(wc_tab, text="📊 WordCloud")
+        
+        wc_params = ttk.Frame(wc_tab, padding=10)
+        wc_params.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(wc_params, text="幅:").grid(row=0, column=0, padx=3, pady=2, sticky=tk.W)
         self.wc_width_var = tk.IntVar(value=1000)
-        ttk.Spinbox(param_grid, from_=100, to=5000, textvariable=self.wc_width_var, width=7).grid(row=3, column=1, padx=5, pady=2, sticky=tk.W)
-
-        ttk.Label(param_grid, text="WordCloud 高さ:").grid(row=3, column=2, padx=5, pady=2, sticky=tk.W)
+        ttk.Spinbox(wc_params, from_=100, to=5000, textvariable=self.wc_width_var, width=7).grid(row=0, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(wc_params, text="高さ:").grid(row=0, column=2, padx=3, pady=2, sticky=tk.W)
         self.wc_height_var = tk.IntVar(value=600)
-        ttk.Spinbox(param_grid, from_=100, to=5000, textvariable=self.wc_height_var, width=7).grid(row=3, column=3, padx=5, pady=2, sticky=tk.W)
-
-        # 【新機能】WordCloud形状選択
-        ttk.Label(param_grid, text="WordCloud形状:").grid(row=8, column=0, padx=5, pady=2, sticky=tk.W)
+        ttk.Spinbox(wc_params, from_=100, to=5000, textvariable=self.wc_height_var, width=7).grid(row=0, column=3, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(wc_params, text="形状:").grid(row=1, column=0, padx=3, pady=2, sticky=tk.W)
         self.wc_shape_var = tk.StringVar(value="rectangle")
-        shape_frame = ttk.Frame(param_grid)
-        shape_frame.grid(row=8, column=1, columnspan=3, padx=5, pady=2, sticky=tk.W)
+        shape_frame = ttk.Frame(wc_params)
+        shape_frame.grid(row=1, column=1, columnspan=3, padx=3, pady=2, sticky=tk.W)
         ttk.Radiobutton(shape_frame, text="四角形", variable=self.wc_shape_var, value="rectangle").pack(side=tk.LEFT, padx=2)
         ttk.Radiobutton(shape_frame, text="楕円形", variable=self.wc_shape_var, value="ellipse").pack(side=tk.LEFT, padx=2)
         ttk.Radiobutton(shape_frame, text="カスタム画像", variable=self.wc_shape_var, value="custom").pack(side=tk.LEFT, padx=2)
-
-        ttk.Label(param_grid, text="カスタム画像パス:").grid(row=9, column=0, padx=5, pady=2, sticky=tk.W)
+        
+        ttk.Label(wc_params, text="カスタム画像パス:").grid(row=2, column=0, padx=3, pady=2, sticky=tk.W)
         self.wc_custom_image_var = tk.StringVar(value="")
-        custom_img_frame = ttk.Frame(param_grid)
-        custom_img_frame.grid(row=9, column=1, columnspan=3, padx=5, pady=2, sticky=tk.EW)
-        ttk.Entry(custom_img_frame, textvariable=self.wc_custom_image_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        custom_img_frame = ttk.Frame(wc_params)
+        custom_img_frame.grid(row=2, column=1, columnspan=3, padx=3, pady=2, sticky=tk.EW)
+        ttk.Entry(custom_img_frame, textvariable=self.wc_custom_image_var, width=30).pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(custom_img_frame, text="参照...", command=self.select_wordcloud_image).pack(side=tk.LEFT, padx=2)
+        
+        ttk.Button(wc_params, text="🎨 WordCloud生成", command=self.on_generate_wordcloud).grid(row=3, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
 
-        # 共起ネットワーク出力サイズ
-        ttk.Label(param_grid, text="ネットワーク幅:").grid(row=4, column=0, padx=5, pady=2, sticky=tk.W)
+        # ===== タブ2: 共起ネットワーク生成 =====
+        net_tab = ttk.Frame(param_notebook)
+        param_notebook.add(net_tab, text="🔗 Network")
+        
+        net_params = ttk.Frame(net_tab, padding=10)
+        net_params.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(net_params, text="ウィンドウサイズ:").grid(row=0, column=0, padx=3, pady=2, sticky=tk.W)
+        self.window_var = tk.IntVar(value=5)
+        ttk.Spinbox(net_params, from_=2, to=20, textvariable=self.window_var, width=7).grid(row=0, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="ウィンドウ形式:").grid(row=0, column=2, padx=3, pady=2, sticky=tk.W)
+        self.window_mode_var = tk.StringVar(value="sliding")
+        mode_frame = ttk.Frame(net_params)
+        mode_frame.grid(row=0, column=3, padx=3, pady=2, sticky=tk.W)
+        ttk.Radiobutton(mode_frame, text="スライディング", variable=self.window_mode_var, value="sliding").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(mode_frame, text="行ごと", variable=self.window_mode_var, value="line").pack(side=tk.LEFT, padx=2)
+        
+        ttk.Label(net_params, text="ネットワーク幅:").grid(row=1, column=0, padx=3, pady=2, sticky=tk.W)
         self.net_width_var = tk.IntVar(value=1200)
-        ttk.Spinbox(param_grid, from_=200, to=5000, textvariable=self.net_width_var, width=7).grid(row=4, column=1, padx=5, pady=2, sticky=tk.W)
-
-        ttk.Label(param_grid, text="ネットワーク高さ:").grid(row=4, column=2, padx=5, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=200, to=5000, textvariable=self.net_width_var, width=7).grid(row=1, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="ネットワーク高さ:").grid(row=1, column=2, padx=3, pady=2, sticky=tk.W)
         self.net_height_var = tk.IntVar(value=800)
-        ttk.Spinbox(param_grid, from_=200, to=5000, textvariable=self.net_height_var, width=7).grid(row=4, column=3, padx=5, pady=2, sticky=tk.W)
-
-        # 追加: 共起ネットワーク表示組数
-        ttk.Label(param_grid, text="ネットワーク表示組数:").grid(row=5, column=0, padx=5, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=200, to=5000, textvariable=self.net_height_var, width=7).grid(row=1, column=3, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="表示組数:").grid(row=2, column=0, padx=3, pady=2, sticky=tk.W)
         self.net_edge_count_var = tk.IntVar(value=50)
-        ttk.Spinbox(param_grid, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).grid(row=5, column=1, padx=5, pady=2, sticky=tk.W)
-
-        # 【新機能】自己回帰ネットワーク制御
-        ttk.Label(param_grid, text="自己ループ:").grid(row=6, column=0, padx=5, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).grid(row=2, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="自己ループ:").grid(row=2, column=2, padx=3, pady=2, sticky=tk.W)
         self.self_loop_var = tk.StringVar(value="remove")
-        loop_frame = ttk.Frame(param_grid)
-        loop_frame.grid(row=6, column=1, padx=5, pady=2, sticky=tk.W)
+        loop_frame = ttk.Frame(net_params)
+        loop_frame.grid(row=2, column=3, padx=3, pady=2, sticky=tk.W)
         ttk.Radiobutton(loop_frame, text="削除", variable=self.self_loop_var, value="remove").pack(side=tk.LEFT, padx=2)
         ttk.Radiobutton(loop_frame, text="描画", variable=self.self_loop_var, value="keep").pack(side=tk.LEFT, padx=2)
-
-        # 【新機能】共起ウィンドウ形式
-        ttk.Label(param_grid, text="共起ウィンドウ形式:").grid(row=7, column=0, padx=5, pady=2, sticky=tk.W)
-        self.window_mode_var = tk.StringVar(value="sliding")
-        mode_frame = ttk.Frame(param_grid)
-        mode_frame.grid(row=7, column=1, columnspan=3, padx=5, pady=2, sticky=tk.W)
-        ttk.Radiobutton(mode_frame, text="スライディングウィンドウ", variable=self.window_mode_var, value="sliding").pack(side=tk.LEFT, padx=2)
-        ttk.Radiobutton(mode_frame, text="行ごと", variable=self.window_mode_var, value="line").pack(side=tk.LEFT, padx=2)
-
-        # --- 追加: 最小共起回数（ネットワーク/表でフィルタ） ---
-        ttk.Label(param_grid, text="最小共起回数:").grid(row=12, column=0, padx=5, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="ノード色:").grid(row=3, column=0, padx=3, pady=2, sticky=tk.W)
+        self.network_cmap_var = tk.StringVar(value="Pastel1")
+        ttk.Combobox(net_params, values=["Pastel1", "Pastel2", "Set3", "Accent", "tab20"], 
+                     textvariable=self.network_cmap_var, state="readonly", width=15).grid(row=3, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="最小共起回数:").grid(row=3, column=2, padx=3, pady=2, sticky=tk.W)
         self.min_cooc_var = tk.IntVar(value=1)
-        ttk.Spinbox(param_grid, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=12, column=1, padx=5, pady=2, sticky=tk.W)
-
-        # --- 追加: 連続同一語を1つとして扱うオプション ---
+        ttk.Spinbox(net_params, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=3, column=3, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="詳細オプション:").grid(row=4, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
+        
         self.collapse_consecutive_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(param_grid, text="連続する同一単語を1つとして扱う", variable=self.collapse_consecutive_var).grid(row=13, column=0, columnspan=3, padx=5, pady=2, sticky=tk.W)
-
-        # --- 追加: 行ごとペア重複カウント制御 ---
+        ttk.Checkbutton(net_params, text="連続同一単語を1つとして扱う", 
+                       variable=self.collapse_consecutive_var).grid(row=5, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+        
         self.dedup_pairs_per_line_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(param_grid, text="行ごとペア重複カウント制御（同じ行内の同じペアは1回のみ）", variable=self.dedup_pairs_per_line_var).grid(row=14, column=0, columnspan=3, padx=5, pady=2, sticky=tk.W)
+        ttk.Checkbutton(net_params, text="行ごとペア重複カウント制御（同じ行内の同じペアは1回のみ）", 
+                       variable=self.dedup_pairs_per_line_var).grid(row=6, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Button(net_params, text="🔗 ネットワーク生成", command=self.on_generate_network).grid(row=7, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
 
-        # 追加: 実行ボタン（縦に配置して見切れ防止）
-        action_frame = ttk.Frame(param_frame)
-        action_frame.pack(side=tk.RIGHT, padx=5)
-        ttk.Button(action_frame, text="WordCloud生成", command=self.on_generate_wordcloud).grid(row=0, column=0, pady=2, sticky=tk.EW)
-        ttk.Button(action_frame, text="共起ネットワーク生成", command=self.on_generate_network).grid(row=1, column=0, pady=2, sticky=tk.EW)
-        ttk.Button(action_frame, text="頻度グラフ生成", command=self.on_generate_frequency_chart).grid(row=2, column=0, pady=2, sticky=tk.EW)
-        ttk.Button(action_frame, text="共起頻度表示", command=self.show_cooccurrence_table).grid(row=3, column=0, pady=2, sticky=tk.EW)
+        # ===== タブ3: 頻度グラフ生成 =====
+        freq_tab = ttk.Frame(param_notebook)
+        param_notebook.add(freq_tab, text="📈 Frequency")
+        
+        freq_params = ttk.Frame(freq_tab, padding=10)
+        freq_params.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(freq_params, text="最小出現回数:").grid(row=0, column=0, padx=3, pady=2, sticky=tk.W)
+        self.min_freq_var = tk.IntVar(value=2)
+        ttk.Spinbox(freq_params, from_=1, to=20, textvariable=self.min_freq_var, width=7).grid(row=0, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Button(freq_params, text="📊 グラフ生成", command=self.on_generate_frequency_chart).grid(row=1, column=0, columnspan=2, padx=3, pady=10, sticky=tk.EW)
+
+        # ===== タブ4: 共起頻度表表示 =====
+        cooc_tab = ttk.Frame(param_notebook)
+        param_notebook.add(cooc_tab, text="📋 CoocTable")
+        
+        cooc_params = ttk.Frame(cooc_tab, padding=10)
+        cooc_params.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(cooc_params, text="最小共起回数:").grid(row=0, column=0, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(cooc_params, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=0, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Button(cooc_params, text="📋 表を表示", command=self.show_cooccurrence_table).grid(row=1, column=0, columnspan=2, padx=3, pady=10, sticky=tk.EW)
 
         edit_frame.columnconfigure(0, weight=1)
         edit_frame.columnconfigure(1, weight=2)
@@ -1302,6 +1309,41 @@ class JapaneseTextAnalyzer:
         # 凡例のサイズを計算して、プロット領域を調整
         fig.canvas.draw()
         legend_bbox = legend.get_window_extent(renderer=fig.canvas.get_renderer())
+        legend_width_inches = legend_bbox.width / fig.dpi
+        legend_height_inches = legend_bbox.height / fig.dpi
+        
+        # 凡例がプロット内に収まるようにサブプロットを調整
+        # 左マージンを増やす（凡例の幅に応じて）
+        left_margin = min(0.3, 0.1 + legend_width_inches / fig_w)
+        fig.subplots_adjust(left=left_margin, top=0.95, bottom=0.05, right=0.98)
+
+        plt.tight_layout(rect=[left_margin, 0.05, 0.98, 0.95])
+
+        canvas = FigureCanvasTkAgg(fig, self.network_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # 保存ボタン
+        ttk.Button(self.network_frame, text="画像として保存",
+                   command=lambda: self.save_figure(fig, "network")).pack(pady=5)
+        ttk.Button(self.network_frame, text="SVGで保存",
+                   command=lambda: self.save_figure(fig, "network", fmt="svg")).pack(pady=5)
+
+    def generate_frequency_chart(self, word_freq):
+        # 既存のウィジェットをクリア
+        for widget in self.freq_frame.winfo_children():
+            widget.destroy()
+
+        # 上位30単語
+        top_words = dict(sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:30])
+
+        # 描画
+        fig, ax = plt.subplots(figsize=(12, 8))
+        words = list(top_words.keys())
+        counts = list(top_words.values())
+
+        ax.barh(words, counts, color='steelblue')
+        ax.set_xlabel('出現回数', fontsize=12)
         legend_width_inches = legend_bbox.width / fig.dpi
         legend_height_inches = legend_bbox.height / fig.dpi
         
