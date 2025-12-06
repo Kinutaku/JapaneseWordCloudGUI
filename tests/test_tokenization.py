@@ -1,3 +1,9 @@
+"""Unit tests for the tokenization service used by the GUI.
+
+These tests run without a Tkinter context and do not ship with the
+runtime application; they only verify the service-layer behavior.
+"""
+
 from collections import Counter
 from pathlib import Path
 import sys
