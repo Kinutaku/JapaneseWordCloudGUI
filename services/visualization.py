@@ -76,6 +76,10 @@ class VisualizationService:
         net_width: int,
         net_height: int,
         cmap_name: str,
+        edge_cmap_name: str = "Blues",
+        node_size_scale: float = 1.0,
+        font_size_scale: float = 1.0,
+        show_legend: bool = True,
     ):
         def _collapse_consecutive(seq: Iterable[str]) -> List[str]:
             result: List[str] = []
@@ -181,7 +185,7 @@ class VisualizationService:
             for n in nodes:
                 comm_map[n] = idx
 
-        node_sizes = [max(300, word_freq.get(node, 1) * 150) for node in G.nodes()]
+        node_sizes = [max(300, word_freq.get(node, 1) * 150) * node_size_scale for node in G.nodes()]
         edges = G.edges()
         weights = [G[u][v]["weight"] for u, v in edges]
         max_weight = max(weights) if weights else 1
@@ -191,6 +195,11 @@ class VisualizationService:
             cmap = cm.get_cmap(cmap_name)
         except Exception:
             cmap = cm.get_cmap("Pastel1")
+
+        try:
+            edge_cmap = cm.get_cmap(edge_cmap_name)
+        except Exception:
+            edge_cmap = cm.Blues
 
         nx.draw_networkx_nodes(
             G,
@@ -206,13 +215,87 @@ class VisualizationService:
             pos,
             width=[1 + w * 4 for w in normalized_weights],
             edge_color=normalized_weights,
-            edge_cmap=cm.Blues,
+            edge_cmap=edge_cmap,
             alpha=0.6,
             ax=ax,
         )
-        nx.draw_networkx_labels(G, pos, font_size=10, font_family="Meiryo", ax=ax)
+        
+        scaled_font_size = 10 * font_size_scale
+        nx.draw_networkx_labels(G, pos, font_size=scaled_font_size, font_family="Meiryo", ax=ax)
         ax.axis("off")
         ax.set_title("共起ネットワーク", fontsize=16, pad=20)
+        
+        # 凡例表示
+        if show_legend:
+            from matplotlib.lines import Line2D
+            from matplotlib.patches import Patch
+            
+            # ノード頻度の範囲を取得
+            node_freqs = [word_freq.get(node, 1) for node in G.nodes()]
+            min_freq = min(node_freqs) if node_freqs else 1
+            max_freq = max(node_freqs) if node_freqs else 1
+            mid_freq = (min_freq + max_freq) // 2
+            
+            # ノードサイズの凡例
+            min_node_size = max(300, min_freq * 150) * node_size_scale
+            mid_node_size = max(300, mid_freq * 150) * node_size_scale
+            max_node_size = max(300, max_freq * 150) * node_size_scale
+            
+            legend_elements = [
+                Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=np.sqrt(min_node_size/np.pi), 
+                       label=f'ノード: 出現{min_freq}回 (最小)'),
+                Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=np.sqrt(mid_node_size/np.pi), 
+                       label=f'ノード: 出現{mid_freq}回 (中央)'),
+                Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=np.sqrt(max_node_size/np.pi), 
+                       label=f'ノード: 出現{max_freq}回 (最大)'),
+            ]
+            
+            # エッジ（共起関係）の凡例
+            if weights:
+                min_weight_val = min(weights)
+                max_weight_val = max(weights)
+                weight_range = max_weight_val - min_weight_val
+                
+                if weight_range == 0:
+                    weight_range = 1
+                
+                # 凡例用の4段階サンプル
+                sample_weights = [
+                    min_weight_val,
+                    min_weight_val + weight_range // 3,
+                    min_weight_val + weight_range * 2 // 3,
+                    max_weight_val
+                ]
+                
+                # 空行を追加して見やすくする
+                legend_elements.append(Patch(facecolor='none', edgecolor='none', label=''))
+                legend_elements.append(Patch(facecolor='none', edgecolor='none', label='エッジ（共起関係）:'))
+                
+                for w in sample_weights:
+                    norm_w = (w - min_weight_val) / max(weight_range, 1)
+
+                    # 実際の描画ロジックと同じカラーマップを使用
+                    edge_color_tuple = edge_cmap(norm_w)
+                    linestyle = 'solid' if norm_w > 0.3 else 'dashed'
+                    legend_elements.append(
+                        Line2D([0], [0], color=edge_color_tuple, linewidth=3, linestyle=linestyle,
+                               label=f'共起{int(w)}回 ({norm_w:.0%})')
+                    )
+            
+            # 凡例を配置（自動調整）
+            legend = ax.legend(handles=legend_elements, loc='upper left', fontsize=7.5, title='凡例', 
+                      title_fontsize=8, framealpha=0.95, labelspacing=1.2, handlelength=2.5)
+            
+            # 凡例のサイズを計算して、プロット領域を調整
+            fig.canvas.draw()
+            legend_bbox = legend.get_window_extent(renderer=fig.canvas.get_renderer())
+            legend_width_inches = legend_bbox.width / fig.dpi
+            
+            # 凡例がプロット内に収まるようにサブプロットを調整
+            left_margin = min(0.3, 0.1 + legend_width_inches / fig_w)
+            fig.subplots_adjust(left=left_margin, top=0.95, bottom=0.05, right=0.98)
+            plt.tight_layout(rect=[left_margin, 0.05, 0.98, 0.95])
+        
         return fig
 
     def build_frequency_figure(self, word_freq: Mapping[str, int]):

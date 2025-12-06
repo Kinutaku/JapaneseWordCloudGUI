@@ -341,14 +341,18 @@ class JapaneseTextAnalyzer:
         ttk.Entry(custom_img_frame, textvariable=self.wc_custom_image_var, width=30).pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(custom_img_frame, text="参照...", command=self.select_wordcloud_image).pack(side=tk.LEFT, padx=2)
        
-        ttk.Label(wc_params, text="詳細オプション:").grid(row=3, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
+        ttk.Label(wc_params, text="最小出現回数:").grid(row=3, column=0, padx=3, pady=2, sticky=tk.W)
+        self.min_freq_var = tk.IntVar(value=2)
+        ttk.Spinbox(wc_params, from_=1, to=20, textvariable=self.min_freq_var, width=7).grid(row=3, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(wc_params, text="詳細オプション:").grid(row=4, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
         
         self.dedup_word_per_line_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(wc_params, text="行ごと単語重複カウント制御（同じ行内の同じ単語は1回のみ）", 
-                       variable=self.dedup_word_per_line_var).grid(row=4, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+                       variable=self.dedup_word_per_line_var).grid(row=5, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
         
             
-        ttk.Button(wc_params, text="🎨 WordCloud生成", command=self.on_generate_wordcloud).grid(row=3, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
+        ttk.Button(wc_params, text="🎨 WordCloud生成", command=self.on_generate_wordcloud).grid(row=6, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
 
         # ===== タブ2: 共起ネットワーク生成 =====
         net_tab = ttk.Frame(param_notebook)
@@ -392,21 +396,40 @@ class JapaneseTextAnalyzer:
         ttk.Combobox(net_params, values=["Pastel1", "Pastel2", "Set3", "Accent", "tab20"], 
                      textvariable=self.network_cmap_var, state="readonly", width=15).grid(row=3, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="最小共起回数:").grid(row=3, column=2, padx=3, pady=2, sticky=tk.W)
-        self.min_cooc_var = tk.IntVar(value=1)
-        ttk.Spinbox(net_params, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=3, column=3, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="エッジ色:").grid(row=3, column=2, padx=3, pady=2, sticky=tk.W)
+        self.edge_cmap_var = tk.StringVar(value="Blues")
+        ttk.Combobox(net_params, values=["Blues", "Reds", "Greens", "Purples", "Oranges", "Greys"], 
+                     textvariable=self.edge_cmap_var, state="readonly", width=15).grid(row=3, column=3, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="詳細オプション:").grid(row=4, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
+        ttk.Label(net_params, text="最小共起回数:").grid(row=4, column=0, padx=3, pady=2, sticky=tk.W)
+        self.min_cooc_var = tk.IntVar(value=1)
+        ttk.Spinbox(net_params, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=4, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="詳細オプション:").grid(row=5, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
         
         self.collapse_consecutive_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(net_params, text="連続同一単語を1つとして扱う", 
-                       variable=self.collapse_consecutive_var).grid(row=5, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+                       variable=self.collapse_consecutive_var).grid(row=6, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
         
         self.dedup_pairs_per_line_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(net_params, text="行ごとペア重複カウント制御（同じ行内の同じペアは1回のみ）", 
-                       variable=self.dedup_pairs_per_line_var).grid(row=6, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+                       variable=self.dedup_pairs_per_line_var).grid(row=7, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Button(net_params, text="🔗 ネットワーク生成", command=self.on_generate_network).grid(row=7, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
+        ttk.Label(net_params, text="表示調整:").grid(row=8, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
+        
+        ttk.Label(net_params, text="ノードサイズ倍率:").grid(row=9, column=0, padx=3, pady=2, sticky=tk.W)
+        self.node_size_scale_var = tk.DoubleVar(value=1.0)
+        ttk.Spinbox(net_params, from_=0.5, to=3.0, increment=0.1, textvariable=self.node_size_scale_var, width=7).grid(row=9, column=1, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Label(net_params, text="フォントサイズ倍率:").grid(row=9, column=2, padx=3, pady=2, sticky=tk.W)
+        self.font_size_scale_var = tk.DoubleVar(value=1.0)
+        ttk.Spinbox(net_params, from_=0.5, to=3.0, increment=0.1, textvariable=self.font_size_scale_var, width=7).grid(row=9, column=3, padx=3, pady=2, sticky=tk.W)
+        
+        self.show_legend_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(net_params, text="凡例を表示", 
+                       variable=self.show_legend_var).grid(row=10, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Button(net_params, text="🔗 ネットワーク生成", command=self.on_generate_network).grid(row=11, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
 
         # ===== タブ3: 頻度グラフ生成 =====
         freq_tab = ttk.Frame(param_notebook)
@@ -416,7 +439,6 @@ class JapaneseTextAnalyzer:
         freq_params.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(freq_params, text="最小出現回数:").grid(row=0, column=0, padx=3, pady=2, sticky=tk.W)
-        self.min_freq_var = tk.IntVar(value=2)
         ttk.Spinbox(freq_params, from_=1, to=20, textvariable=self.min_freq_var, width=7).grid(row=0, column=1, padx=3, pady=2, sticky=tk.W)
         
         ttk.Label(freq_params, text="詳細オプション:").grid(row=1, column=0, columnspan=2, padx=3, pady=4, sticky=tk.W)
@@ -907,6 +929,10 @@ class JapaneseTextAnalyzer:
         net_width = getattr(self, "net_width_var", tk.IntVar(value=1200)).get()
         net_height = getattr(self, "net_height_var", tk.IntVar(value=800)).get()
         cmap_name = getattr(self, "network_cmap_var", tk.StringVar(value="Pastel1")).get()
+        edge_cmap_name = getattr(self, "edge_cmap_var", tk.StringVar(value="Blues")).get()
+        node_size_scale = getattr(self, "node_size_scale_var", tk.DoubleVar(value=1.0)).get()
+        font_size_scale = getattr(self, "font_size_scale_var", tk.DoubleVar(value=1.0)).get()
+        show_legend = getattr(self, "show_legend_var", tk.BooleanVar(value=True)).get()
 
         fig = self.visual_service.build_network_figure(
             tokens,
@@ -923,6 +949,10 @@ class JapaneseTextAnalyzer:
             net_width=net_width,
             net_height=net_height,
             cmap_name=cmap_name,
+            edge_cmap_name=edge_cmap_name,
+            node_size_scale=node_size_scale,
+            font_size_scale=font_size_scale,
+            show_legend=show_legend,
         )
 
         if not fig:
@@ -1386,6 +1416,9 @@ class JapaneseTextAnalyzer:
         """ルールを適用 -> ストップワード除去 -> edit_area に反映 -> 単語リストを更新"""
         if not hasattr(self, "pre_tokens_lines") or not self.pre_tokens_lines:
             self.update_pre_tokens()
+        if not self.pre_tokens_lines:
+            messagebox.showwarning("警告", "分かち書きの取得に失敗しました。テキストを入力してから再実行してください。")
+            return
 
         # --- 変更: 編集領域を更新する前に Listbox と同期して最新の stop_words を反映 ---
         if hasattr(self, "stopword_listbox"):
@@ -1395,12 +1428,28 @@ class JapaneseTextAnalyzer:
                 # 万一の取得エラーは既存の self.stop_words を維持
                 pass
 
-        merged_tokens_all = []
-        for tokens_line in self.pre_tokens_lines:
-            new_line = self.apply_rules_to_tokens(tokens_line) if self.merge_rules else tokens_line
-            # ストップワード削除（結合は既に行われている）
-            filtered = [t for t in new_line if t not in self.stop_words and len(t) > 0]
-            merged_tokens_all.extend(filtered)
+        # 連語ルールを適用して分かち書き行を更新し、ストップワード除去後のトークンを取得
+        merged_lines, filtered_tokens = TokenizationService.merge_lines(
+            self.pre_tokens_lines,
+            self.merge_rules,
+            self.stop_words,
+        )
+        self.pre_tokens_lines = merged_lines
+
+        # フィルタ済みトークンが空の場合は安全側で長さ1も残す
+        merged_tokens_all = (
+            filtered_tokens
+            if filtered_tokens
+            else [t for line in merged_lines for t in line if t not in self.stop_words and len(t) > 0]
+        )
+
+        # original_lines も結合後の内容に合わせて更新（行単位の表示や共起計算で利用）
+        self.original_lines = [
+            " ".join([t for t in line if t not in self.stop_words and len(t) > 1])
+            for line in merged_lines
+            if any(t for t in line if t not in self.stop_words and len(t) > 1)
+        ]
+
         # 編集エリアへ反映
         self.edit_area.delete(1.0, tk.END)
         self.edit_area.insert(tk.END, " ".join(merged_tokens_all))
