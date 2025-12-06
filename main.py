@@ -88,7 +88,19 @@ class JapaneseTextAnalyzer:
             '0','1','2','3','4','5','6','7','8','9',
             '０','１','２','３','４','５','６','７','８','９',
             '年','月','日','時','分','％',
-            'の', 'に', 'は', 'を', 'た', 'が', 'で', 'て', 'と', 'し', 'れ', 'さ', 'ある', 'いる', 'も', 'する', 'から', 'な', 'こと', 'として', 'い', 'や', 'れる', 'など', 'なっ', 'ない', 'この', 'ため', 'その', 'あっ', 'よう', 'また', 'もの', 'という', 'あり', 'まで', 'られ', 'なる', 'へ', 'か', 'だ', 'これ', 'によって', 'により', 'おり', 'より', 'による', 'ず', 'なり', 'られる', 'において', 'ば', 'なかっ', 'なく', 'しかし', 'について', 'せ', 'だっ', 'その後', 'できる', 'それ', 'う', 'ので', 'なお', 'のみ', 'でき', 'き', 'つ', 'における', 'および', 'いう', 'さらに', 'でも', 'ら', 'たり', 'その他', 'に関する', 'たち', 'ます', 'ん', 'なら', 'に対して', '特に', 'せる', 'あるいは', 'まし', 'ながら', 'ただし', 'かつて', 'ください', 'なし', 'これら', 'それら',"、","。","・"
+            'の', 'に', 'は', 'を', 'た', 'が', 'で', 'て', 'と', 'し', 
+            'れ', 'さ', 'ある', 'いる', 'も', 'する', 'から', 'な', 'こと', 
+            'として', 'い', 'や', 'れる', 'など', 'なっ', 'ない', 'この', 'ため', 
+            'その', 'あっ', 'よう', 'また', 'もの', 'という', 'あり', 'まで', 'られ', 
+            'なる', 'へ', 'か', 'だ', 'これ', 'によって', 'により', 'おり', 'より', 
+            'による', 'ず', 'なり', 'られる', 'において', 'ば', 'なかっ', 'なく', 
+            'しかし', 'について', 'せ', 'だっ', 'その後', 'できる', 'それ', 
+            'う', 'ので', 'なお', 'のみ', 'でき', 'き', 'つ', 'における', 
+            'および', 'いう', 'さらに', 'でも', 'ら', 'たり', 'その他', 
+            'に関する', 'たち', 'ます', 'ん', 'なら', 'に対して', '特に', 
+            'せる', 'あるいは', 'まし', 'ながら', 'ただし', 'かつて', 
+            'ください', 'なし', 'これら', 'それら',"、","。","・",
+            "「","」","『","』","〈","〉","《","》","．","，","：","；","！","？"
 
         ])
 
@@ -389,6 +401,10 @@ class JapaneseTextAnalyzer:
         # --- 追加: 連続同一語を1つとして扱うオプション ---
         self.collapse_consecutive_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(param_grid, text="連続する同一単語を1つとして扱う", variable=self.collapse_consecutive_var).grid(row=13, column=0, columnspan=3, padx=5, pady=2, sticky=tk.W)
+
+        # --- 追加: 行ごとペア重複カウント制御 ---
+        self.dedup_pairs_per_line_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(param_grid, text="行ごとペア重複カウント制御（同じ行内の同じペアは1回のみ）", variable=self.dedup_pairs_per_line_var).grid(row=14, column=0, columnspan=3, padx=5, pady=2, sticky=tk.W)
 
         # 追加: 実行ボタン（縦に配置して見切れ防止）
         action_frame = ttk.Frame(param_frame)
@@ -1034,23 +1050,10 @@ class JapaneseTextAnalyzer:
                     cooc_pairs.append(pair)
         else:
             # 行ごと形式：保持した行情報を使用（行内で折りたたむ）
-            for line in self.original_lines:
-                if not line.strip():  # 空行スキップ
-                    continue
-                line_tokens = line.split()
-                if getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get():
-                    line_tokens = self._collapse_consecutive(line_tokens)
-                for i in range(len(line_tokens)):
-                    if line_tokens[i] not in word_freq:
-                        continue
-                    for j in range(i + 1, len(line_tokens)):
-                        if line_tokens[j] not in word_freq:
-                            continue
-                        pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
-                        cooc_pairs.append(pair)
-            # 可能であれば MeCab で分かち書きした pre_tokens_lines を使い、
-            # それがなければ従来の文字列 split を使う（ただし常に word_freq でフィルタする）
-            if getattr(self, "pre_tokens_lines", None):
+            # pre_tokens_lines を優先的に使い、行ごとに独立して共起ペアを抽出
+            dedup_mode = getattr(self, "dedup_pairs_per_line_var", tk.BooleanVar(value=False)).get()
+            
+            if getattr(self, "pre_tokens_lines", None) and len(self.pre_tokens_lines) > 0:
                 for surfaces in self.pre_tokens_lines:
                     if not surfaces:
                         continue
@@ -1058,17 +1061,27 @@ class JapaneseTextAnalyzer:
                     line_tokens = [s for s in surfaces if s in word_freq]
                     if getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get():
                         line_tokens = self._collapse_consecutive(line_tokens)
+                    # この行内でのペア抽出（行間にまたがらない）
+                    seen_pairs_in_line = set() if dedup_mode else None
                     for i in range(len(line_tokens)):
                         for j in range(i + 1, len(line_tokens)):
                             pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
-                            cooc_pairs.append(pair)
+                            if dedup_mode:
+                                if pair not in seen_pairs_in_line:
+                                    cooc_pairs.append(pair)
+                                    seen_pairs_in_line.add(pair)
+                            else:
+                                cooc_pairs.append(pair)
             else:
+                # フォールバック：original_lines から行ごとに抽出
                 for line in self.original_lines:
                     if not line.strip():
                         continue
                     line_tokens = line.split()
                     if getattr(self, "collapse_consecutive_var", tk.BooleanVar(value=False)).get():
                         line_tokens = self._collapse_consecutive(line_tokens)
+                    # この行内でのペア抽出（行間にまたがらない）
+                    seen_pairs_in_line = set() if dedup_mode else None
                     for i in range(len(line_tokens)):
                         if line_tokens[i] not in word_freq:
                             continue
@@ -1076,7 +1089,12 @@ class JapaneseTextAnalyzer:
                             if line_tokens[j] not in word_freq:
                                 continue
                             pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
-                            cooc_pairs.append(pair)
+                            if dedup_mode:
+                                if pair not in seen_pairs_in_line:
+                                    cooc_pairs.append(pair)
+                                    seen_pairs_in_line.add(pair)
+                            else:
+                                cooc_pairs.append(pair)
 
         cooc_count = Counter(cooc_pairs)
 
@@ -1433,17 +1451,47 @@ class JapaneseTextAnalyzer:
                     pair = tuple(sorted([tokens_used[i], tokens_used[j]]))
                     cooc_pairs.append(pair)
         else:
-            # 行ごと形式：保持した行情報を使用（行内で折りたたむ）
-            for line in self.original_lines:
-                if not line.strip():
-                    continue
-                line_tokens = line.split()
-                if collapse:
-                    line_tokens = self._collapse_consecutive(line_tokens)
-                for i in range(len(line_tokens)):
-                    for j in range(i + 1, len(line_tokens)):
-                        pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
-                        cooc_pairs.append(pair)
+            # 行ごと形式：pre_tokens_lines を優先的に使い、行ごとに独立して抽出
+            dedup_mode = getattr(self, "dedup_pairs_per_line_var", tk.BooleanVar(value=False)).get()
+            
+            if getattr(self, "pre_tokens_lines", None) and len(self.pre_tokens_lines) > 0:
+                for surfaces in self.pre_tokens_lines:
+                    if not surfaces:
+                        continue
+                    # ストップワード除去・長さ条件を統一して適用
+                    line_tokens = [s for s in surfaces if s in word_freq]
+                    if collapse:
+                        line_tokens = self._collapse_consecutive(line_tokens)
+                    # この行内でのペア抽出（行間にまたがらない）
+                    seen_pairs_in_line = set() if dedup_mode else None
+                    for i in range(len(line_tokens)):
+                        for j in range(i + 1, len(line_tokens)):
+                            pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
+                            if dedup_mode:
+                                if pair not in seen_pairs_in_line:
+                                    cooc_pairs.append(pair)
+                                    seen_pairs_in_line.add(pair)
+                            else:
+                                cooc_pairs.append(pair)
+            else:
+                # フォールバック：original_lines から行ごとに抽出
+                for line in self.original_lines:
+                    if not line.strip():
+                        continue
+                    line_tokens = line.split()
+                    if collapse:
+                        line_tokens = self._collapse_consecutive(line_tokens)
+                    # この行内でのペア抽出（行間にまたがらない）
+                    seen_pairs_in_line = set() if dedup_mode else None
+                    for i in range(len(line_tokens)):
+                        for j in range(i + 1, len(line_tokens)):
+                            pair = tuple(sorted([line_tokens[i], line_tokens[j]]))
+                            if dedup_mode:
+                                if pair not in seen_pairs_in_line:
+                                    cooc_pairs.append(pair)
+                                    seen_pairs_in_line.add(pair)
+                            else:
+                                cooc_pairs.append(pair)
 
         if not cooc_pairs:
             ttk.Label(self.cooc_frame, text="共起ペアが見つかりません。").pack(pady=10)
@@ -1512,7 +1560,7 @@ class JapaneseTextAnalyzer:
 
     # --- 追加ユーティリティ ---
     def _collapse_consecutive(self, seq):
-        """連続して同じ要素が続く場合、それらを1つにまとめて返す。"""
+        """連続して同じ要素が続く場合、それらを1つにまとめて返す."""
         if not seq:
             return []
         out = [seq[0]]
