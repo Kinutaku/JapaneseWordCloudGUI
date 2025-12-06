@@ -335,7 +335,14 @@ class JapaneseTextAnalyzer:
         custom_img_frame.grid(row=2, column=1, columnspan=3, padx=3, pady=2, sticky=tk.EW)
         ttk.Entry(custom_img_frame, textvariable=self.wc_custom_image_var, width=30).pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(custom_img_frame, text="参照...", command=self.select_wordcloud_image).pack(side=tk.LEFT, padx=2)
+       
+        ttk.Label(wc_params, text="詳細オプション:").grid(row=3, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
         
+        self.dedup_word_per_line_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(wc_params, text="行ごと単語重複カウント制御（同じ行内の同じ単語は1回のみ）", 
+                       variable=self.dedup_word_per_line_var).grid(row=4, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+        
+            
         ttk.Button(wc_params, text="🎨 WordCloud生成", command=self.on_generate_wordcloud).grid(row=3, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
 
         # ===== タブ2: 共起ネットワーク生成 =====
@@ -407,7 +414,13 @@ class JapaneseTextAnalyzer:
         self.min_freq_var = tk.IntVar(value=2)
         ttk.Spinbox(freq_params, from_=1, to=20, textvariable=self.min_freq_var, width=7).grid(row=0, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Button(freq_params, text="📊 グラフ生成", command=self.on_generate_frequency_chart).grid(row=1, column=0, columnspan=2, padx=3, pady=10, sticky=tk.EW)
+        ttk.Label(freq_params, text="詳細オプション:").grid(row=1, column=0, columnspan=2, padx=3, pady=4, sticky=tk.W)
+        
+        self.dedup_word_per_line_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(freq_params, text="行ごと単語重複カウント制御（同じ行内の同じ単語は1回のみ）", 
+                       variable=self.dedup_word_per_line_var).grid(row=2, column=0, columnspan=2, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Button(freq_params, text="📊 グラフ生成", command=self.on_generate_frequency_chart).grid(row=3, column=0, columnspan=2, padx=3, pady=10, sticky=tk.EW)
 
         # ===== タブ4: 共起頻度表表示 =====
         cooc_tab = ttk.Frame(param_notebook)
@@ -419,7 +432,12 @@ class JapaneseTextAnalyzer:
         ttk.Label(cooc_params, text="最小共起回数:").grid(row=0, column=0, padx=3, pady=2, sticky=tk.W)
         ttk.Spinbox(cooc_params, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=0, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Button(cooc_params, text="📋 表を表示", command=self.show_cooccurrence_table).grid(row=1, column=0, columnspan=2, padx=3, pady=10, sticky=tk.EW)
+        ttk.Label(cooc_params, text="詳細オプション:").grid(row=1, column=0, columnspan=2, padx=3, pady=4, sticky=tk.W)
+        
+        ttk.Checkbutton(cooc_params, text="行ごとペア重複カウント制御（同じ行内の同じペアは1回のみ）", 
+                       variable=self.dedup_pairs_per_line_var).grid(row=2, column=0, columnspan=2, padx=3, pady=2, sticky=tk.W)
+        
+        ttk.Button(cooc_params, text="📋 表を表示", command=self.show_cooccurrence_table).grid(row=3, column=0, columnspan=2, padx=3, pady=10, sticky=tk.EW)
 
         edit_frame.columnconfigure(0, weight=1)
         edit_frame.columnconfigure(1, weight=2)
@@ -1344,41 +1362,6 @@ class JapaneseTextAnalyzer:
 
         ax.barh(words, counts, color='steelblue')
         ax.set_xlabel('出現回数', fontsize=12)
-        legend_width_inches = legend_bbox.width / fig.dpi
-        legend_height_inches = legend_bbox.height / fig.dpi
-        
-        # 凡例がプロット内に収まるようにサブプロットを調整
-        # 左マージンを増やす（凡例の幅に応じて）
-        left_margin = min(0.3, 0.1 + legend_width_inches / fig_w)
-        fig.subplots_adjust(left=left_margin, top=0.95, bottom=0.05, right=0.98)
-
-        plt.tight_layout(rect=[left_margin, 0.05, 0.98, 0.95])
-
-        canvas = FigureCanvasTkAgg(fig, self.network_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-        # 保存ボタン
-        ttk.Button(self.network_frame, text="画像として保存",
-                   command=lambda: self.save_figure(fig, "network")).pack(pady=5)
-        ttk.Button(self.network_frame, text="SVGで保存",
-                   command=lambda: self.save_figure(fig, "network", fmt="svg")).pack(pady=5)
-
-    def generate_frequency_chart(self, word_freq):
-        # 既存のウィジェットをクリア
-        for widget in self.freq_frame.winfo_children():
-            widget.destroy()
-
-        # 上位30単語
-        top_words = dict(sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:30])
-
-        # 描画
-        fig, ax = plt.subplots(figsize=(12, 8))
-        words = list(top_words.keys())
-        counts = list(top_words.values())
-
-        ax.barh(words, counts, color='steelblue')
-        ax.set_xlabel('出現回数', fontsize=12)
         ax.set_title(f'単語出現頻度（全{len(word_freq)}単語中の上位30単語）', fontsize=16, pad=20)
         ax.invert_yaxis()
         plt.tight_layout()
@@ -1387,32 +1370,77 @@ class JapaneseTextAnalyzer:
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        # 保存ボタン
-        ttk.Button(self.freq_frame, text="画像として保存",
-                   command=lambda: self.save_figure(fig, "frequency")).pack(pady=5)
+        # 保存ボタン群
+        btn_frame = ttk.Frame(self.freq_frame)
+        btn_frame.pack(pady=5)
+        ttk.Button(btn_frame, text="画像として保存",
+                   command=lambda: self.save_figure(fig, "frequency")).pack(side=tk.LEFT, padx=5)
+        
+        # CSV 出力ボタン
+        def export_frequency_csv():
+            filepath = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                initialfile="frequency.csv",
+                filetypes=[("CSVファイル", "*.csv"), ("すべてのファイル", "*.*")]
+            )
+            if not filepath:
+                return
+            try:
+                with open(filepath, 'w', encoding='utf-8-sig', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['単語', '出現回数'])
+                    for word, count in sorted(word_freq.items(), key=lambda x: x[1], reverse=True):
+                        writer.writerow([word, count])
+                messagebox.showinfo("完了", f"保存しました: {filepath}")
+            except Exception as e:
+                messagebox.showerror("エラー", f"保存に失敗しました: {e}")
+        
+        ttk.Button(btn_frame, text="CSV出力", command=export_frequency_csv).pack(side=tk.LEFT, padx=5)
 
-    def save_figure(self, fig, name, fmt=None):
-        filepath = filedialog.asksaveasfilename(
-            defaultextension=".png",
-            initialfile=f"{name}.png",
-            filetypes=[("PNG", "*.png"), ("PDF", "*.pdf"), ("SVG", "*.svg")]
-        )
-        if filepath:
-            save_kwargs = {"dpi": 300, "bbox_inches": "tight"}
-            if fmt:
-                save_kwargs["format"] = fmt
-            fig.savefig(filepath, **save_kwargs)
-            messagebox.showinfo("完了", f"保存しました: {filepath}")
-
-    # ---------- 追加: 編集タブから呼び出すラッパー関数 ----------
     def on_generate_wordcloud(self):
         # 編集エリアから単語・頻度を取得し、最小出現回数でフィルタ
         text = self.edit_area.get(1.0, tk.END).strip()
         if not text:
             messagebox.showwarning("警告", "単語データがありません。")
             return
-        tokens = text.split()
-        word_freq = Counter(tokens)
+        
+        # 行ごと重複カウント制御オプションを確認
+        dedup_word_mode = getattr(self, "dedup_word_per_line_var", tk.BooleanVar(value=False)).get()
+        
+        if dedup_word_mode and self.original_lines:
+            # 共起ネットワークと同じロジック：pre_tokens_lines を優先的に使用
+            unique_tokens = []
+            if getattr(self, "pre_tokens_lines", None) and len(self.pre_tokens_lines) > 0:
+                # pre_tokens_lines がある場合（分かち書き後）
+                for surfaces in self.pre_tokens_lines:
+                    if not surfaces:
+                        continue
+                    # ストップワード除去・長さ条件を適用
+                    line_tokens = [s for s in surfaces if s not in self.stop_words and len(s) > 1]
+                    # 行内で重複排除
+                    seen = set()
+                    for t in line_tokens:
+                        if t not in seen:
+                            unique_tokens.append(t)
+                            seen.add(t)
+            else:
+                # フォールバック：original_lines から
+                for line in self.original_lines:
+                    if not line.strip():
+                        continue
+                    line_tokens = line.split()
+                    # 行内で重複排除
+                    seen = set()
+                    for t in line_tokens:
+                        if t not in seen:
+                            unique_tokens.append(t)
+                            seen.add(t)
+            word_freq = Counter(unique_tokens)
+        else:
+            # 行ごとカウント無効：単純に全トークンをカウント
+            tokens = text.split()
+            word_freq = Counter(tokens)
+        
         min_freq = self.min_freq_var.get()
         filtered_freq = {k: v for k, v in word_freq.items() if v >= min_freq}
         if not filtered_freq:
@@ -1447,8 +1475,44 @@ class JapaneseTextAnalyzer:
         if not text:
             messagebox.showwarning("警告", "単語データがありません。")
             return
-        tokens = text.split()
-        word_freq = Counter(tokens)
+        
+        # 行ごと重複カウント制御オプションを確認
+        dedup_word_mode = getattr(self, "dedup_word_per_line_var", tk.BooleanVar(value=False)).get()
+        
+        if dedup_word_mode and self.original_lines:
+            # 共起ネットワークと同じロジック：pre_tokens_lines を優先的に使用
+            unique_tokens = []
+            if getattr(self, "pre_tokens_lines", None) and len(self.pre_tokens_lines) > 0:
+                # pre_tokens_lines がある場合（分かち書き後）
+                for surfaces in self.pre_tokens_lines:
+                    if not surfaces:
+                        continue
+                    # ストップワード除去・長さ条件を適用
+                    line_tokens = [s for s in surfaces if s not in self.stop_words and len(s) > 1]
+                    # 行内で重複排除
+                    seen = set()
+                    for t in line_tokens:
+                        if t not in seen:
+                            unique_tokens.append(t)
+                            seen.add(t)
+            else:
+                # フォールバック：original_lines から
+                for line in self.original_lines:
+                    if not line.strip():
+                        continue
+                    line_tokens = line.split()
+                    # 行内で重複排除
+                    seen = set()
+                    for t in line_tokens:
+                        if t not in seen:
+                            unique_tokens.append(t)
+                            seen.add(t)
+            word_freq = Counter(unique_tokens)
+        else:
+            # 行ごとカウント無効：単純に全トークンをカウント
+            tokens = text.split()
+            word_freq = Counter(tokens)
+        
         min_freq = self.min_freq_var.get()
         filtered_freq = {k: v for k, v in word_freq.items() if v >= min_freq}
         if not filtered_freq:
@@ -1459,6 +1523,56 @@ class JapaneseTextAnalyzer:
             self.notebook.select(2)
         except Exception as e:
             messagebox.showerror("エラー", f"頻度グラフの生成中に問題が発生しました: {e}")
+
+    def generate_frequency_chart(self, word_freq):
+        # 既存のウィジェットをクリア
+        for widget in self.freq_frame.winfo_children():
+            widget.destroy()
+
+        # 上位30単語
+        top_words = dict(sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:30])
+
+        # 描画
+        fig, ax = plt.subplots(figsize=(12, 8))
+        words = list(top_words.keys())
+        counts = list(top_words.values())
+
+        ax.barh(words, counts, color='steelblue')
+        ax.set_xlabel('出現回数', fontsize=12)
+        ax.set_title(f'単語出現頻度（全{len(word_freq)}単語中の上位30単語）', fontsize=16, pad=20)
+        ax.invert_yaxis()
+        plt.tight_layout()
+
+        canvas = FigureCanvasTkAgg(fig, self.freq_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # 保存ボタン群
+        btn_frame = ttk.Frame(self.freq_frame)
+        btn_frame.pack(pady=5)
+        ttk.Button(btn_frame, text="画像として保存",
+                   command=lambda: self.save_figure(fig, "frequency")).pack(side=tk.LEFT, padx=5)
+        
+        # CSV 出力ボタン
+        def export_frequency_csv():
+            filepath = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                initialfile="frequency.csv",
+                filetypes=[("CSVファイル", "*.csv"), ("すべてのファイル", "*.*")]
+            )
+            if not filepath:
+                return
+            try:
+                with open(filepath, 'w', encoding='utf-8-sig', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['単語', '出現回数'])
+                    for word, count in sorted(word_freq.items(), key=lambda x: x[1], reverse=True):
+                        writer.writerow([word, count])
+                messagebox.showinfo("完了", f"保存しました: {filepath}")
+            except Exception as e:
+                messagebox.showerror("エラー", f"保存に失敗しました: {e}")
+        
+        ttk.Button(btn_frame, text="CSV出力", command=export_frequency_csv).pack(side=tk.LEFT, padx=5)
 
     def show_cooccurrence_table(self):
         """共起ペアの頻度を可視化タブ内で表示（CSV出力可能）"""
@@ -1516,7 +1630,7 @@ class JapaneseTextAnalyzer:
                             else:
                                 cooc_pairs.append(pair)
             else:
-                # フォールバック：original_lines から行ごとに抽出
+                # フォールバック：original_lines から
                 for line in self.original_lines:
                     if not line.strip():
                         continue
