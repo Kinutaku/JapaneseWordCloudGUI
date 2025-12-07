@@ -7,7 +7,7 @@ from typing import Iterable, List, Mapping, Sequence
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
-from matplotlib import cm
+from matplotlib import cm, font_manager
 from wordcloud import WordCloud  # WordCloud is MIT-licensed
 from PIL import Image
 
@@ -80,6 +80,7 @@ class VisualizationService:
         node_size_scale: float = 1.0,
         font_size_scale: float = 1.0,
         show_legend: bool = True,
+        font_family: str | None = None,
     ):
         def _collapse_consecutive(seq: Iterable[str]) -> List[str]:
             result: List[str] = []
@@ -221,9 +222,15 @@ class VisualizationService:
         )
         
         scaled_font_size = 10 * font_size_scale
-        nx.draw_networkx_labels(G, pos, font_size=scaled_font_size, font_family="Meiryo", ax=ax)
+        label_kwargs = {"font_size": scaled_font_size, "ax": ax}
+        if font_family:
+            label_kwargs["font_family"] = font_family
+        nx.draw_networkx_labels(G, pos, **label_kwargs)
         ax.axis("off")
-        ax.set_title("共起ネットワーク", fontsize=16, pad=20)
+        title_kwargs = {"fontsize": 16, "pad": 20}
+        if font_family:
+            title_kwargs["fontname"] = font_family
+        ax.set_title("共起ネットワーク", **title_kwargs)
         
         # 凡例表示（プロットと重ならないように右側へ退避）
         if show_legend:
@@ -283,6 +290,7 @@ class VisualizationService:
                     )
             
             # 凡例を配置（自動調整）
+            legend_font = font_manager.FontProperties(family=font_family) if font_family else None
             legend = ax.legend(
                 handles=legend_elements,
                 loc="upper left",
@@ -294,7 +302,10 @@ class VisualizationService:
                 framealpha=0.95,
                 labelspacing=1.2,
                 handlelength=2.5,
+                prop=legend_font,
             )
+            if font_family and legend.get_title():
+                legend.get_title().set_fontproperties(legend_font)
 
             # 凡例ぶんの右余白を確保（動的に計算）
             fig.canvas.draw()

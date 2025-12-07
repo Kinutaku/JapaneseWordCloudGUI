@@ -39,22 +39,22 @@ class JapaneseTextAnalyzer:
         self.root.title("日本語テキスト分析ツール")
         self.root.geometry("1400x900")
 
-        # ============================
-        # フォント設定（Meiryo固定）
-        # ============================
-        self.font_path = r"C:\Windows\Fonts\meiryo.ttc"
+        # 出力用フォント（WordCloud/共起ネットワーク）: デフォルトはシステム標準を使用（Meiryo を優先）
+        self.vis_font_path: str = ""
+        self.vis_font_family: str = ""
+        # Windows 縦書き用の "@フォント" は除外し、matplotlib の font_manager から取得
+        self.available_fonts = sorted(
+            {f.name for f in font_manager.fontManager.ttflist if f.name and not str(f.name).startswith("@")}
+        )
+        self.preferred_font = "Meiryo"
+        if self.preferred_font in self.available_fonts:
+            self.apply_visual_font_family(self.preferred_font, notify=False)
+        elif self.available_fonts:
+            # Meiryo がなければ、最初のフォントを暫定で設定
+            self.apply_visual_font_family(self.available_fonts[0], notify=False)
+        # 互換用: resolved path を self.font_path にも保持しておく
+        self.font_path: str = self.resolve_wordcloud_font_path() or ""
 
-        if Path(self.font_path).exists():
-            self.font_prop = font_manager.FontProperties(fname=self.font_path)
-            plt.rcParams["font.family"] = self.font_prop.get_name()
-            plt.rcParams["axes.unicode_minus"] = False
-        else:
-            messagebox.showwarning(
-                "警告",
-                f"Meiryo フォントが見つかりませんでした: {self.font_path}\n"
-                "Windows環境であることを確認してください。"
-            )
-            self.font_prop = None
 
         # Sudachi 形態素解析
         try:
@@ -115,24 +115,23 @@ class JapaneseTextAnalyzer:
         # =============================
         # ttk の日本語フォント設定（Meiryo）
         # =============================
-        font_path = r"C:\Windows\Fonts\meiryo.ttc"
+        # フォント設定の辞書
+        font_config = {
+            "normal": ("", 11),  # サイズ11
+            "small": ("", 10),   # サイズ10
+            "bold_small": ("", 10, "bold") # サイズ10 かつ Bold
+        }
 
-        if Path(font_path).exists():
-            # 全 ttk ウィジェットに Meiryo を適用
-            style = ttk.Style()
-            style.configure(".", font=("Meiryo", 11))
-            style.configure("TLabel", font=("Meiryo", 11))
-            style.configure("TButton", font=("Meiryo", 11))
-            style.configure("TEntry", font=("Meiryo", 11))
-            style.configure("Treeview", font=("Meiryo", 10))
-            style.configure("Treeview.Heading", font=("Meiryo", 10, "bold"))
-            style.configure("TNotebook.Tab", font=("Meiryo", 10))
+        # 全 ttk ウィジェットにデフォルトフォントを適用
+        style = ttk.Style()
 
-        else:
-            messagebox.showwarning(
-                "警告",
-                f"Meiryo フォントが見つかりません: {font_path}"
-            )
+        # 通常のウィジェット（Label, Button, Entryなど）
+        style.configure(".", font=font_config["normal"])
+        style.configure("TLabel", font=font_config["normal"])
+        style.configure("TButton", font=font_config["normal"])
+        style.configure("TEntry", font=font_config["normal"])
+
+
             
         # メインフレーム
         main_frame = ttk.Frame(self.root, padding="10")
@@ -261,7 +260,7 @@ class JapaneseTextAnalyzer:
         right_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
 
         # 左側: 単語リスト
-        ttk.Label(left_frame, text="単語頻度リスト", font=("Meiryo", 12, "bold")).pack(pady=5)
+        ttk.Label(left_frame, text="単語頻度リスト", font=("", 12, "bold")).pack(pady=5)
 
         # 検索フレーム
         search_frame = ttk.Frame(left_frame)
@@ -305,6 +304,32 @@ class JapaneseTextAnalyzer:
 
         self.edit_area = scrolledtext.ScrolledText(right_frame, width=60, height=15, wrap=tk.WORD)
         self.edit_area.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # 出力フォント設定（WordCloud / 共起ネットワーク）
+        font_frame = ttk.LabelFrame(right_frame, text="出力フォント設定 (空欄ならシステム標準を使用)")
+        font_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(font_frame, text="システムフォント:").grid(row=0, column=0, padx=4, pady=4, sticky=tk.W)
+        self.visual_font_family_var = tk.StringVar(value=self.vis_font_family or (self.preferred_font if self.preferred_font in self.available_fonts else (self.available_fonts[0] if self.available_fonts else "")))
+        ttk.Combobox(
+            font_frame,
+            values=self.available_fonts,
+            textvariable=self.visual_font_family_var,
+            state="readonly",
+            width=30
+        ).grid(row=0, column=1, padx=4, pady=4, sticky=tk.EW)
+        ttk.Button(font_frame, text="適用", command=lambda: self.apply_visual_font_family(self.visual_font_family_var.get(), notify=True)).grid(row=0, column=2, padx=4, pady=4)
+        # 初期表示のパスも揃える
+        if not self.vis_font_family and self.available_fonts:
+            self.apply_visual_font_family(self.visual_font_family_var.get(), notify=False)
+        if hasattr(self, "visual_font_var"):
+            self.visual_font_var.set(self.resolve_wordcloud_font_path() or self.vis_font_path)
+
+        ttk.Label(font_frame, text="フォントファイル(.ttf/.ttc/.otf):").grid(row=1, column=0, padx=4, pady=4, sticky=tk.W)
+        self.visual_font_var = tk.StringVar(value=self.vis_font_path)
+        ttk.Entry(font_frame, textvariable=self.visual_font_var, width=45).grid(row=1, column=1, padx=4, pady=4, sticky=tk.EW)
+        ttk.Button(font_frame, text="参照...", command=self.select_visual_font).grid(row=1, column=2, padx=4, pady=4)
+        ttk.Button(font_frame, text="適用", command=lambda: self.apply_visual_font(self.visual_font_var.get(), notify=True)).grid(row=1, column=3, padx=4, pady=4)
+        font_frame.columnconfigure(1, weight=1)
 
         # パラメータと実行ボタン（サブタブで機能ごとに分割）
         param_notebook = ttk.Notebook(right_frame)
@@ -732,8 +757,94 @@ class JapaneseTextAnalyzer:
         return pos_field if pos_field else ""
 
 
-    def find_font_path(self) -> Optional[str]:
-        return "C:/Windows/Fonts/meiryo.ttc"
+    def apply_visual_font_family(self, family: str, notify: bool = False):
+        """
+        システムフォント名から WordCloud/共起ネットワーク用フォントを設定する。
+        FontProperties を経由して得たファミリ名とパスのみを利用する。
+        """
+        family = (family or "").strip()
+        if not family:
+            self.vis_font_family = ""
+            self.vis_font_path = ""
+            if notify:
+                messagebox.showinfo("完了", "出力フォントを未指定にしました（システム標準を使用）。")
+            return
+
+        try:
+            prop = font_manager.FontProperties(family=family)
+            resolved = font_manager.findfont(prop, fallback_to_default=True)
+            self.vis_font_family = prop.get_name() or family
+            self.vis_font_path = resolved if resolved and Path(resolved).exists() else ""
+        except Exception:
+            self.vis_font_path = ""
+            self.vis_font_family = family
+
+        # 互換: resolve したパスを self.font_path にも保持
+        self.font_path = self.resolve_wordcloud_font_path() or ""
+
+        if notify:
+            msg = f"出力フォントを設定しました: {family}"
+            if not self.vis_font_path:
+                msg += "\n※ WordCloud ではフォントパス未解決のため、システムの標準フォントが使われる場合があります。"
+            messagebox.showinfo("完了", msg)
+        # UI反映
+        if hasattr(self, "visual_font_var"):
+            self.visual_font_var.set(self.font_path or self.vis_font_path or "")
+        if hasattr(self, "visual_font_family_var"):
+            self.visual_font_family_var.set(self.vis_font_family)
+
+    def apply_visual_font(self, path: str, notify: bool = False):
+        """
+        WordCloud/共起ネットワーク用のフォントを設定する。
+        空欄ならシステム標準フォントを利用する。
+        """
+        path = (path or "").strip()
+        if not path:
+            self.vis_font_path = ""
+            self.vis_font_family = ""
+            if notify:
+                messagebox.showinfo("完了", "出力フォントを未指定にしました（システム標準を使用）。")
+            return
+
+        p = Path(path)
+        if not p.exists():
+            messagebox.showerror("エラー", f"フォントファイルが見つかりません: {path}")
+            return
+        try:
+            prop = font_manager.FontProperties(fname=str(p))
+            self.vis_font_path = str(p)
+            self.vis_font_family = prop.get_name() or ""
+            self.font_path = self.resolve_wordcloud_font_path() or ""
+            if notify:
+                messagebox.showinfo("完了", f"出力フォントを設定しました: {self.vis_font_family}")
+        except Exception as e:
+            messagebox.showerror("エラー", f"フォントの読み込みに失敗しました: {e}")
+        # UI反映
+        if hasattr(self, "visual_font_var"):
+            self.visual_font_var.set(self.vis_font_path)
+        if hasattr(self, "visual_font_family_var"):
+            self.visual_font_family_var.set(self.vis_font_family)
+
+    def resolve_wordcloud_font_path(self) -> Optional[str]:
+        """
+        WordCloud 用に font_path を決定する。FontProperties 経由で取得済みのパスのみを利用する。
+        """
+        if self.vis_font_path:
+            self.font_path = self.vis_font_path
+            return self.font_path
+        return None
+
+    def select_visual_font(self):
+        filepath = filedialog.askopenfilename(
+            title="フォントファイルを選択",
+            filetypes=[
+                ("Font files", "*.ttf;*.ttc;*.otf"),
+                ("すべてのファイル", "*.*"),
+            ],
+        )
+        if filepath:
+            self.visual_font_var.set(filepath)
+            self.apply_visual_font(filepath, notify=True)
 
 
     def delete_by_pos(self):
@@ -895,7 +1006,7 @@ class JapaneseTextAnalyzer:
             width=width,
             height=height,
             shape=shape,
-            font_path=self.font_path,
+            font_path=self.resolve_wordcloud_font_path(),
             custom_image_path=custom_image,
         )
 
@@ -906,7 +1017,7 @@ class JapaneseTextAnalyzer:
         ttk.Button(self.wordcloud_frame, text="画像として保存",
                    command=lambda: self.save_figure(fig, "wordcloud")).pack(pady=5)
 
-        if not self.font_path:
+        if not (self.font_path or self.resolve_wordcloud_font_path()):
             ttk.Label(self.wordcloud_frame, text="※日本語フォントが見つからないため、文字化けする可能性があります。", foreground="red").pack(pady=5)
 
     def generate_network(self, tokens, word_freq):
@@ -947,6 +1058,7 @@ class JapaneseTextAnalyzer:
             node_size_scale=node_size_scale,
             font_size_scale=font_size_scale,
             show_legend=show_legend,
+            font_family=self.vis_font_family or None,
         )
 
         if not fig:
@@ -1288,7 +1400,7 @@ class JapaneseTextAnalyzer:
             return
 
         # ヘッダー
-        ttk.Label(self.cooc_frame, text=f"共起ペア一覧（min共起={min_cooc}、全{len(items)}件）", font=("Meiryo", 12, "bold")).pack(pady=8)
+        ttk.Label(self.cooc_frame, text=f"共起ペア一覧（min共起={min_cooc}、全{len(items)}件）", font=("", 12, "bold")).pack(pady=8)
 
         # Treeview 表示
         tree_frame = ttk.Frame(self.cooc_frame)
