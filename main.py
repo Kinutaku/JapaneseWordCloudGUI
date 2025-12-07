@@ -443,11 +443,11 @@ class JapaneseTextAnalyzer:
         
         ttk.Label(net_params, text="ノードサイズ倍率:").grid(row=9, column=0, padx=3, pady=2, sticky=tk.W)
         self.node_size_scale_var = tk.DoubleVar(value=1.0)
-        ttk.Spinbox(net_params, from_=0.5, to=3.0, increment=0.1, textvariable=self.node_size_scale_var, width=7).grid(row=9, column=1, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=0.01, to=10.0, increment=0.1, textvariable=self.node_size_scale_var, width=7).grid(row=9, column=1, padx=3, pady=2, sticky=tk.W)
         
         ttk.Label(net_params, text="フォントサイズ倍率:").grid(row=9, column=2, padx=3, pady=2, sticky=tk.W)
         self.font_size_scale_var = tk.DoubleVar(value=1.0)
-        ttk.Spinbox(net_params, from_=0.5, to=3.0, increment=0.1, textvariable=self.font_size_scale_var, width=7).grid(row=9, column=3, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=0.01, to=10.0, increment=0.1, textvariable=self.font_size_scale_var, width=7).grid(row=9, column=3, padx=3, pady=2, sticky=tk.W)
         
         self.show_legend_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(net_params, text="凡例を表示", 
