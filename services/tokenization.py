@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Tuple
 
-import sudachipy
+import sudachipy  # SudachiPy (Apache-2.0); uses sudachi-dictionary-full with IPA data (BSD notice should ship on redistribution)
 
 
 @dataclass

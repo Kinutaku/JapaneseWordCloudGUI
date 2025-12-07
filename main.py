@@ -3,15 +3,15 @@
 WordCloudと共起ネットワークを生成するGUIアプリケーション
 
 必要なライブラリ:
-pip install tkinter pillow wordcloud sudachipy sudachi-dictionary-full networkx matplotlib japanize-matplotlib
+pip install tkinter pillow wordcloud sudachipy sudachidict_core networkx matplotlib japanize-matplotlib
 
 ※Sudachiの辞書のインストールが必要です
-python -m pip install sudachi-dictionary-full
+python -m pip install sudachipy sudachidict_core            
 """
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
-import sudachipy
+import sudachipy  # SudachiPy (Apache-2.0); sudachi-dictionary-full includes IPA data under BSD notice that must accompany redistribution
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -78,7 +78,7 @@ class JapaneseTextAnalyzer:
         self.original_lines = []  # 【新機能】行情報を保持
 
         # --- 追加: 分かち書き（ストップワード除去前）行情報と連語ルール ---
-        self.pre_tokens_lines = []          # 各行ごとの MeCab 分かち書き（ストップワード除去前）
+        self.pre_tokens_lines = []          # 各行ごとの Sudachi 分かち書き（ストップワード除去前）
         self.merge_rules = []               # ルールリスト: {"len":n, "seq":tuple(...), "merged": "結合語"}
 
         # ストップワード
@@ -591,7 +591,7 @@ class JapaneseTextAnalyzer:
                 self.original_text = combined_text
                 self.original_lines = combined_text.split("\n")
 
-                # --- 追加: CSV取り込み直後に MeCab で再解析して pre_tokens_lines を更新し、
+                # --- 追加: CSV取り込み直後に Sudachi で再解析して pre_tokens_lines を更新し、
                 #     original_lines を一貫して「ストップワード除去済みのトークン列（文字列）」に整備する ---
                 try:
                     self.update_pre_tokens()
@@ -629,7 +629,7 @@ class JapaneseTextAnalyzer:
 
     def tokenize_text(self):
         if not self.token_service:
-            messagebox.showerror("エラー", "MeCabが初期化されていません。")
+            messagebox.showerror("エラー", "Sudachiが初期化されていません。")
             return
 
         text = self.text_area.get(1.0, tk.END).strip()
@@ -641,7 +641,7 @@ class JapaneseTextAnalyzer:
 
         result = self.token_service.tokenize_text(text, self.stop_words)
         if not result.surfaces:
-            messagebox.showerror("エラー", "MeCabの解析結果を取得できませんでした。")
+            messagebox.showerror("エラー", "Sudachiの解析結果を取得できませんでした。")
             return
 
         self.tokens = result.tokens
@@ -1353,7 +1353,7 @@ class JapaneseTextAnalyzer:
     
     # --- ここから追加メソッド（setup_merge_tab の直後に配置） ---
     def update_pre_tokens(self):
-        """original_text を MeCab で再解析して pre_tokens_lines を更新する（ストップワード除去前）"""
+        """original_text を Sudachi で再解析して pre_tokens_lines を更新する（ストップワード除去前）"""
         self.pre_tokens_lines = []
         text = getattr(self, "original_text", "") or self.text_area.get(1.0, tk.END).strip()
         if not text:

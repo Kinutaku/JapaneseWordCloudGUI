@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 from matplotlib import cm
-from wordcloud import WordCloud
+from wordcloud import WordCloud  # WordCloud is MIT-licensed
 from PIL import Image
 
 
