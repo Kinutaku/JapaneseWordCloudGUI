@@ -81,6 +81,10 @@ class VisualizationService:
         font_size_scale: float = 1.0,
         show_legend: bool = True,
         font_family: str | None = None,
+        layout_mode: str = "kamada",
+        spring_k: float | None = None,
+        spring_iterations: int = 200,
+        spring_seed: int | None = 42,
     ):
         def _collapse_consecutive(seq: Iterable[str]) -> List[str]:
             result: List[str] = []
@@ -99,11 +103,17 @@ class VisualizationService:
             for i in range(len(tokens_used)):
                 if tokens_used[i] not in word_freq:
                     continue
+                window_seen = set() if dedup_pairs_per_line else None
                 for j in range(i + 1, min(i + window_size, len(tokens_used))):
                     if tokens_used[j] not in word_freq:
                         continue
                     pair = tuple(sorted([tokens_used[i], tokens_used[j]]))
-                    cooc_pairs.append(pair)
+                    if dedup_pairs_per_line:
+                        if pair not in window_seen:
+                            cooc_pairs.append(pair)
+                            window_seen.add(pair)
+                    else:
+                        cooc_pairs.append(pair)
         else:
             if pre_tokens_lines:
                 for surfaces in pre_tokens_lines:
@@ -174,11 +184,20 @@ class VisualizationService:
         fig, ax = plt.subplots(figsize=(fig_w, fig_h), facecolor="white")
         ax.set_facecolor("white")
 
-        try:
-            pos = nx.kamada_kawai_layout(G, scale=2)
-        except Exception:
-            layout_k = 2 / (len(G.nodes()) ** 0.5)
-            pos = nx.spring_layout(G, k=layout_k, iterations=500, seed=42, scale=2, weight="weight")
+        pos = {}
+        layout_mode = (layout_mode or "kamada").lower()
+        if layout_mode == "spring":
+            k_val = spring_k if spring_k and spring_k > 0 else None
+            try:
+                pos = nx.spring_layout(G, k=k_val, iterations=max(10, spring_iterations), seed=spring_seed, scale=2, weight="weight")
+            except Exception:
+                pos = nx.spring_layout(G, seed=spring_seed, scale=2, weight="weight")
+        else:
+            try:
+                pos = nx.kamada_kawai_layout(G, scale=2)
+            except Exception:
+                k_val = spring_k if spring_k and spring_k > 0 else None
+                pos = nx.spring_layout(G, k=k_val, iterations=max(10, spring_iterations), seed=spring_seed, scale=2, weight="weight")
 
         communities = list(nx.community.greedy_modularity_communities(G))
         comm_map = {}

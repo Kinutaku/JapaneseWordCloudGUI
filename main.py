@@ -395,65 +395,78 @@ class JapaneseTextAnalyzer:
         mode_frame.grid(row=0, column=3, padx=3, pady=2, sticky=tk.W)
         ttk.Radiobutton(mode_frame, text="スライディング", variable=self.window_mode_var, value="sliding").pack(side=tk.LEFT, padx=2)
         ttk.Radiobutton(mode_frame, text="行ごと", variable=self.window_mode_var, value="line").pack(side=tk.LEFT, padx=2)
+
+        ttk.Label(net_params, text="レイアウト:").grid(row=1, column=0, padx=3, pady=2, sticky=tk.W)
+        self.layout_mode_var = tk.StringVar(value="kamada")
+        ttk.Combobox(net_params, values=["kamada", "spring"], textvariable=self.layout_mode_var, state="readonly", width=12).grid(row=1, column=1, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="spring k:").grid(row=1, column=2, padx=3, pady=2, sticky=tk.W)
+        self.spring_k_var = tk.DoubleVar(value=0.5)
+        ttk.Spinbox(net_params, from_=0.0, to=5.0, increment=0.1, textvariable=self.spring_k_var, width=7).grid(row=1, column=3, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="spring反復:").grid(row=2, column=0, padx=3, pady=2, sticky=tk.W)
+        self.spring_iter_var = tk.IntVar(value=200)
+        ttk.Spinbox(net_params, from_=10, to=2000, textvariable=self.spring_iter_var, width=7).grid(row=2, column=1, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="spring seed:").grid(row=2, column=2, padx=3, pady=2, sticky=tk.W)
+        self.spring_seed_var = tk.IntVar(value=42)
+        ttk.Spinbox(net_params, from_=0, to=9999, textvariable=self.spring_seed_var, width=7).grid(row=2, column=3, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="ネットワーク幅:").grid(row=1, column=0, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="ネットワーク幅:").grid(row=3, column=0, padx=3, pady=2, sticky=tk.W)
         self.net_width_var = tk.IntVar(value=1200)
-        ttk.Spinbox(net_params, from_=200, to=5000, textvariable=self.net_width_var, width=7).grid(row=1, column=1, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=200, to=5000, textvariable=self.net_width_var, width=7).grid(row=3, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="ネットワーク高さ:").grid(row=1, column=2, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="ネットワーク高さ:").grid(row=3, column=2, padx=3, pady=2, sticky=tk.W)
         self.net_height_var = tk.IntVar(value=800)
-        ttk.Spinbox(net_params, from_=200, to=5000, textvariable=self.net_height_var, width=7).grid(row=1, column=3, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=200, to=5000, textvariable=self.net_height_var, width=7).grid(row=3, column=3, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="表示組数:").grid(row=2, column=0, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="表示組数:").grid(row=4, column=0, padx=3, pady=2, sticky=tk.W)
         self.net_edge_count_var = tk.IntVar(value=50)
-        ttk.Spinbox(net_params, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).grid(row=2, column=1, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=10, to=500, textvariable=self.net_edge_count_var, width=7).grid(row=4, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="自己ループ:").grid(row=2, column=2, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="自己ループ:").grid(row=4, column=2, padx=3, pady=2, sticky=tk.W)
         self.self_loop_var = tk.StringVar(value="remove")
         loop_frame = ttk.Frame(net_params)
-        loop_frame.grid(row=2, column=3, padx=3, pady=2, sticky=tk.W)
+        loop_frame.grid(row=4, column=3, padx=3, pady=2, sticky=tk.W)
         ttk.Radiobutton(loop_frame, text="削除", variable=self.self_loop_var, value="remove").pack(side=tk.LEFT, padx=2)
         ttk.Radiobutton(loop_frame, text="描画", variable=self.self_loop_var, value="keep").pack(side=tk.LEFT, padx=2)
         
-        ttk.Label(net_params, text="ノード色:").grid(row=3, column=0, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="ノード色:").grid(row=5, column=0, padx=3, pady=2, sticky=tk.W)
         self.network_cmap_var = tk.StringVar(value="Pastel1")
         ttk.Combobox(net_params, values=["Pastel1", "Pastel2", "Set3", "Accent", "tab20"], 
-                     textvariable=self.network_cmap_var, state="readonly", width=15).grid(row=3, column=1, padx=3, pady=2, sticky=tk.W)
+                     textvariable=self.network_cmap_var, state="readonly", width=15).grid(row=5, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="エッジ色:").grid(row=3, column=2, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="エッジ色:").grid(row=5, column=2, padx=3, pady=2, sticky=tk.W)
         self.edge_cmap_var = tk.StringVar(value="Blues")
         ttk.Combobox(net_params, values=["Blues", "Reds", "Greens", "Purples", "Oranges", "Greys"], 
-                     textvariable=self.edge_cmap_var, state="readonly", width=15).grid(row=3, column=3, padx=3, pady=2, sticky=tk.W)
+                     textvariable=self.edge_cmap_var, state="readonly", width=15).grid(row=5, column=3, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="最小共起回数:").grid(row=4, column=0, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="最小共起回数:").grid(row=6, column=0, padx=3, pady=2, sticky=tk.W)
         self.min_cooc_var = tk.IntVar(value=1)
-        ttk.Spinbox(net_params, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=4, column=1, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=1, to=100, textvariable=self.min_cooc_var, width=7).grid(row=6, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="詳細オプション:").grid(row=5, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
+        ttk.Label(net_params, text="詳細オプション:").grid(row=7, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
         
         self.collapse_consecutive_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(net_params, text="連続同一単語を1つとして扱う", 
-                       variable=self.collapse_consecutive_var).grid(row=6, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+                       variable=self.collapse_consecutive_var).grid(row=8, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
         
         self.dedup_pairs_per_line_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(net_params, text="行ごとペア重複カウント制御（同じ行内の同じペアは1回のみ）", 
-                       variable=self.dedup_pairs_per_line_var).grid(row=7, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+        ttk.Checkbutton(net_params, text="行/ウィンドウ内ペア重複カウント制御（同じ窓内の同じペアは1回のみ）", 
+                       variable=self.dedup_pairs_per_line_var).grid(row=9, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="表示調整:").grid(row=8, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
+        ttk.Label(net_params, text="表示調整:").grid(row=10, column=0, columnspan=4, padx=3, pady=4, sticky=tk.W)
         
-        ttk.Label(net_params, text="ノードサイズ倍率:").grid(row=9, column=0, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="ノードサイズ倍率:").grid(row=11, column=0, padx=3, pady=2, sticky=tk.W)
         self.node_size_scale_var = tk.DoubleVar(value=1.0)
-        ttk.Spinbox(net_params, from_=0.01, to=10.0, increment=0.1, textvariable=self.node_size_scale_var, width=7).grid(row=9, column=1, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=0.01, to=10.0, increment=0.1, textvariable=self.node_size_scale_var, width=7).grid(row=11, column=1, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Label(net_params, text="フォントサイズ倍率:").grid(row=9, column=2, padx=3, pady=2, sticky=tk.W)
+        ttk.Label(net_params, text="フォントサイズ倍率:").grid(row=11, column=2, padx=3, pady=2, sticky=tk.W)
         self.font_size_scale_var = tk.DoubleVar(value=1.0)
-        ttk.Spinbox(net_params, from_=0.01, to=10.0, increment=0.1, textvariable=self.font_size_scale_var, width=7).grid(row=9, column=3, padx=3, pady=2, sticky=tk.W)
+        ttk.Spinbox(net_params, from_=0.01, to=10.0, increment=0.1, textvariable=self.font_size_scale_var, width=7).grid(row=11, column=3, padx=3, pady=2, sticky=tk.W)
         
         self.show_legend_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(net_params, text="凡例を表示", 
-                       variable=self.show_legend_var).grid(row=10, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
+                       variable=self.show_legend_var).grid(row=12, column=0, columnspan=4, padx=3, pady=2, sticky=tk.W)
         
-        ttk.Button(net_params, text="🔗 ネットワーク生成", command=self.on_generate_network).grid(row=11, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
+        ttk.Button(net_params, text="🔗 ネットワーク生成", command=self.on_generate_network).grid(row=13, column=0, columnspan=4, padx=3, pady=10, sticky=tk.EW)
 
         # ===== タブ3: 頻度グラフ生成 =====
         freq_tab = ttk.Frame(param_notebook)
@@ -485,7 +498,7 @@ class JapaneseTextAnalyzer:
         
         ttk.Label(cooc_params, text="詳細オプション:").grid(row=1, column=0, columnspan=2, padx=3, pady=4, sticky=tk.W)
         
-        ttk.Checkbutton(cooc_params, text="行ごとペア重複カウント制御（同じ行内の同じペアは1回のみ）", 
+        ttk.Checkbutton(cooc_params, text="行/ウィンドウ内ペア重複カウント制御（同じ窓内の同じペアは1回のみ）", 
                        variable=self.dedup_pairs_per_line_var).grid(row=2, column=0, columnspan=2, padx=3, pady=2, sticky=tk.W)
         
         ttk.Button(cooc_params, text="📋 表を表示", command=self.show_cooccurrence_table).grid(row=3, column=0, columnspan=2, padx=3, pady=10, sticky=tk.EW)
@@ -1038,6 +1051,10 @@ class JapaneseTextAnalyzer:
         node_size_scale = getattr(self, "node_size_scale_var", tk.DoubleVar(value=1.0)).get()
         font_size_scale = getattr(self, "font_size_scale_var", tk.DoubleVar(value=1.0)).get()
         show_legend = getattr(self, "show_legend_var", tk.BooleanVar(value=True)).get()
+        layout_mode = getattr(self, "layout_mode_var", tk.StringVar(value="kamada")).get()
+        spring_k = getattr(self, "spring_k_var", tk.DoubleVar(value=0.5)).get()
+        spring_iter = getattr(self, "spring_iter_var", tk.IntVar(value=200)).get()
+        spring_seed = getattr(self, "spring_seed_var", tk.IntVar(value=42)).get()
 
         fig = self.visual_service.build_network_figure(
             tokens,
@@ -1059,6 +1076,10 @@ class JapaneseTextAnalyzer:
             font_size_scale=font_size_scale,
             show_legend=show_legend,
             font_family=self.vis_font_family or None,
+            layout_mode=layout_mode,
+            spring_k=spring_k,
+            spring_iterations=spring_iter,
+            spring_seed=spring_seed,
         )
 
         if not fig:
