@@ -3,18 +3,15 @@
 WordCloudと共起ネットワークを生成するGUIアプリケーション
 
 必要なライブラリ:
-pip install tkinter pillow wordcloud mecab-python3 networkx matplotlib japanize-matplotlib
+pip install tkinter pillow wordcloud sudachipy sudachi-dictionary-full networkx matplotlib japanize-matplotlib
 
-※MeCabのインストールも必要です
-Windows: https://github.com/ikegami-yukino/mecab/releases
-Mac: brew install mecab mecab-ipadic
-Linux: sudo apt-get install mecab libmecab-dev mecab-ipadic-utf8
+※Sudachiの辞書のインストールが必要です
+python -m pip install sudachi-dictionary-full
 """
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
-import MeCab
-import ipadic
+import sudachipy
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -59,14 +56,16 @@ class JapaneseTextAnalyzer:
             )
             self.font_prop = None
 
-        # MeCab (ipadic 設定を利用)
+        # Sudachi 形態素解析
         try:
-            self.mecab = MeCab.Tagger(f"{ipadic.MECAB_ARGS} -Ochasen")
+            config = sudachipy.Config()
+            dictionary = sudachipy.Dictionary(config)
+            self.sudachi = dictionary.create()
         except Exception:
-            messagebox.showerror("警告", "MeCabが見つかりません")
-            self.mecab = None
+            messagebox.showerror("警告", "Sudachiが見つかりません")
+            self.sudachi = None
 
-        self.token_service = TokenizationService(self.mecab) if self.mecab else None
+        self.token_service = TokenizationService(self.sudachi) if self.sudachi else None
         self.file_service = FileService()
         self.visual_service = VisualizationService()
 
@@ -724,18 +723,13 @@ class JapaneseTextAnalyzer:
 
     @lru_cache(maxsize=4096)
     def get_pos(self, word: str) -> str:
-        if not word or not self.mecab:
+        if not word or not self.sudachi:
             return ""
-        tagger = MeCab.Tagger(f"{ipadic.MECAB_ARGS} -Ochasen")
-        parsed = tagger.parse(word)
-        if not parsed:
+        tokens = self.sudachi.tokenize(word)
+        if not tokens:
             return ""
-        first = parsed.splitlines()[0]
-        parts = first.split("\t")
-        if len(parts) < 4:
-            return ""
-        pos_field = parts[3]
-        return pos_field.split("-")[0] if pos_field else ""
+        pos_field = tokens[0].part_of_speech()[0]
+        return pos_field if pos_field else ""
 
 
     def find_font_path(self) -> Optional[str]:

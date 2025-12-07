@@ -4,8 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Tuple
 
-import MeCab
-import ipadic
+import sudachipy
 
 
 @dataclass
@@ -20,20 +19,22 @@ class TokenizationResult:
 
 
 class TokenizationService:
-    """Utility wrapper around MeCab tokenization logic without GUI side effects."""
+    """Utility wrapper around Sudachi tokenization logic without GUI side effects."""
 
-    def __init__(self, mecab_tagger: MeCab.Tagger | None = None):
-        self.mecab_tagger = mecab_tagger or MeCab.Tagger(f"{ipadic.MECAB_ARGS} -Ochasen")
+    def __init__(self, tokenizer=None):
+        if tokenizer is None:
+            config = sudachipy.Config()
+            dictionary = sudachipy.Dictionary(config)
+            self.tokenizer = dictionary.create()
+        else:
+            self.tokenizer = tokenizer
 
     def parse_with_pos(self, text: str) -> Tuple[List[str], List[str]]:
-        parsed = self.mecab_tagger.parse(text)
-        lines = [l for l in parsed.splitlines() if l and l != "EOS"]
+        tokens = self.tokenizer.tokenize(text)
         surfaces, pos_list = [], []
-        for line in lines:
-            parts = line.split("\t")
-            if len(parts) >= 4:
-                surfaces.append(parts[0])
-                pos_list.append(parts[3].split("-")[0])
+        for token in tokens:
+            surfaces.append(token.surface())
+            pos_list.append(token.part_of_speech()[0])
         return surfaces, pos_list
 
     def tokenize_text(self, text: str, stop_words: Iterable[str]) -> TokenizationResult:
